@@ -233,8 +233,20 @@ def mp3_to_silk(mp3_path: Path) -> Path:
         return silk
 
 
+def ensure_mp3(text: str, voice_design: str | None = None) -> Path:
+    """她的一句话 → mp3（QQ 官方语音支持 silk/mp3/wav/ogg；用 mp3 最直接，无需再转格式）。"""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    design = voice_design or VOICE_DESIGN_DEFAULT
+    key = hashlib.md5((_design_key(design) + text).encode("utf-8")).hexdigest()[:10]
+    path = CACHE_DIR / f"mimo_{design}_{_design_key(design)}_{key}.mp3"
+    if path.exists() and path.stat().st_size > 0:
+        return path
+    out = synth_text(text, voice_design=design)
+    return out
+
+
 def ensure_silk(text: str, voice_design: str | None = None) -> Path:
-    """她的一句话 → silk 文件（带缓存；合成引擎自动选择）。"""
+    """她的一句话 → silk 文件（带缓存；合成引擎自动选择；QQ 也可用 mp3——见此前的 ensure_mp3）。"""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     design = voice_design or VOICE_DESIGN_DEFAULT
     key = hashlib.md5((_design_key(design) + text).encode("utf-8")).hexdigest()[:12]

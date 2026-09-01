@@ -161,9 +161,9 @@ class MoshiQQ(botpy.Client):
             print(f"[qqbot] 回复失败：{e}")
 
     async def _send_voice(self, message, text: str) -> None:
-        """发语音（silk）—— 官方 file_type=3。QQ 服务端需能访问 voice_url_base。"""
-        silk = await asyncio.to_thread(voice_mod.ensure_silk, text, self.voice_design)
-        url = f"{self.voice_url_base}/voice/{silk.name}"
+        """发语音。官方支持 silk/mp3/wav/ogg（file_type=3）——用 mp3（MiMo 原生格式，一步到位）。"""
+        mp3 = await asyncio.to_thread(voice_mod.ensure_mp3, text, self.voice_design)
+        url = f"{self.voice_url_base}/voice/{mp3.name}"
         if hasattr(message, "group_openid") and message.group_openid:
             await self.api.post_group_file(group_openid=message.group_openid,
                                            file_type=3, url=url, srv_send_msg=True)
@@ -181,8 +181,8 @@ class MoshiQQ(botpy.Client):
                 if text and self.last_openid:
                     if self.voice and voice_mod.decide_voice(self.session.she, "chat",
                                                              text, turn_kind="touch"):
-                        silk = await asyncio.to_thread(voice_mod.ensure_silk, text, self.voice_design)
-                        url = f"{self.voice_url_base}/voice/{silk.name}"
+                        mp3 = await asyncio.to_thread(voice_mod.ensure_mp3, text, self.voice_design)
+                        url = f"{self.voice_url_base}/voice/{mp3.name}"
                         await self.api.post_c2c_file(openid=self.last_openid,
                                                      file_type=3, url=url, srv_send_msg=True)
                         print(f"[qqbot] 她想你了（语音）：{text[:30]}…")
