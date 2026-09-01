@@ -45,21 +45,24 @@ MIMO_BASE = "https://api.xiaomimimo.com/v1"
 MIMO_MODEL = "mimo-v2.5-tts-voicedesign"
 
 # ── 音色候选（设计文本 = 生成"她的声音"的配方；同一份文本 → 同一种声音）──
+# 00 后（二十二三岁）、干净清透、安静内敛——不甜、不幼稚、更不假装成熟
+# （v2：去掉"中低音色/沙哑/叹息/邻家姐姐"等成熟感源；提"年轻/学生气/清透"）
 VOICE_DESIGNS: dict[str, str] = {
     "A": (
-        "二十多岁的中国女性，声音平静内敛，语气克制，语速偏慢，音量不大。"
-        "音色中低，略带一点清冷和极轻的沙哑，像安静地、想着事情说话；"
-        "不甜、不撒娇、不刻意温柔，情绪起伏小，偶尔有一声轻轻的叹息。"
+        "二十二三岁的女生，声音年轻干净、清透，音色比普通女声偏高一点点，"
+        "像安静的大学生。语速正常偏慢，语气平和，带一点认生和寡言；"
+        "不甜、不撒娇、不假装成熟，也不刻意低沉；"
+        "就像'嗯……'的日常说话，偶尔有点发呆、慢半拍。"
     ),
     "B": (
-        "二十多岁的中国女性，声音干净自然，中低音色，语速适中偏慢。"
-        "说话带一点点疏离感但不出冷，像安静温柔的邻家姐姐；"
-        "平实、耐听、没有表演感，偶尔在句尾轻轻放下来。"
+        "二十二三岁的女生，声音自然清亮，年轻，中高音色，语速适中。"
+        "说话带着年轻女孩特有的干净和一点点疏离，像安静好相处的邻桌同学；"
+        "平实、耐听，不带播音腔，句尾自然放轻。"
     ),
     "C": (
-        "二十多岁的中国女性，声音轻、低、软但克制，语速较慢，音量偏小。"
-        "像深夜压低声音跟你说的话，安静、让人安心，不情绪化，"
-        "话不多，但每句都落得很稳。"
+        "二十二三岁的女生，声音轻轻的、柔柔的但很克制，语速较慢，音量小，"
+        "像宿舍关了灯之后压低声音跟你说的话；"
+        "年轻、干净、不情绪化，偶尔带一点点困意；话不多，每句都落得很轻。"
     ),
 }
 VOICE_DESIGN_DEFAULT = "A"   # 候选音频试听后，把选中的字母定在这里
@@ -111,6 +114,11 @@ def synth_text(text: str, voice_design: str | None = None) -> Path:
     return synth_edge(text)
 
 
+def _design_key(voice_design: str) -> str:
+    """设计文本的短指纹（改配方 = 新声音：缓存/文件名跟着变，不会串旧声）。"""
+    return hashlib.md5(VOICE_DESIGNS.get(voice_design, voice_design).encode("utf-8")).hexdigest()[:6]
+
+
 def synth_mimo(text: str, voice_design: str) -> Path:
     """MiMo VoiceDesign：user=音色设计文本，assistant=要念的文本（OpenAI 兼容）。
 
@@ -139,7 +147,8 @@ def synth_mimo(text: str, voice_design: str) -> Path:
                 data = json.loads(resp.read().decode("utf-8"))
             b64 = data["choices"][0]["message"]["audio"]["data"]
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            path = CACHE_DIR / f"mimo_{voice_design}_{hashlib.md5(text.encode('utf-8')).hexdigest()[:10]}.mp3"
+            path = CACHE_DIR / f"mimo_{voice_design}_{_design_key(voice_design)}_" \
+                              f"{hashlib.md5(text.encode('utf-8')).hexdigest()[:10]}.mp3"
             path.write_bytes(base64.b64decode(b64))
             return path
         except urllib.error.HTTPError as e:
@@ -228,7 +237,7 @@ def ensure_silk(text: str, voice_design: str | None = None) -> Path:
     """她的一句话 → silk 文件（带缓存；合成引擎自动选择）。"""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     design = voice_design or VOICE_DESIGN_DEFAULT
-    key = hashlib.md5((design + text).encode("utf-8")).hexdigest()[:12]
+    key = hashlib.md5((_design_key(design) + text).encode("utf-8")).hexdigest()[:12]
     silk = CACHE_DIR / f"v_{key}.silk"
     if silk.exists() and silk.stat().st_size > 0:
         return silk
