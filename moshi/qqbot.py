@@ -21,6 +21,7 @@ import argparse
 import asyncio
 import json
 import os
+import random
 import re
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -119,6 +120,7 @@ class MoshiQQ(botpy.Client):
         async with self._lock:                        # 一次只处理一句（她的状态是连续的）
             out = await asyncio.to_thread(self.session.on_message, text)
         reply = (out.get("reply") or "……").strip()
+        await asyncio.sleep(random.uniform(0.8, 3.0))  # 真人打字节奏（消息不是秒回的）
         # ── 她选：这轮发文字还是发语音（像真人；语音=仅有语音，不带文字）──
         if self.voice and voice_mod.decide_voice(self.session.she, "chat", reply):
             try:
