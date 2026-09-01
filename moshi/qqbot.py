@@ -194,6 +194,11 @@ def main() -> None:
     except RuntimeError as e:
         print(f"[qqbot] {e}")
         return
+    # Python >=3.10 不再自动创建事件循环；botpy 的 __init__ 依赖 get_event_loop() → 先挂好
+    try:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+    except Exception:
+        pass
     client = MoshiQQ(
         session=session,
         tick_minutes=args.tick_minutes,
