@@ -43,7 +43,8 @@ def main() -> None:
             if V.mimo_key():
                 mp3 = V.synth_mimo(args.text, c)
             else:
-                mp3 = V.synth_edge(args.text)            silk = V.mp3_to_silk(mp3)
+                mp3 = V.synth_edge(args.text)
+            silk = V.mp3_to_silk(mp3)
             print(f"【{c}】{Path(mp3)}")
             print(f"     {Path(silk)}   <- 这个就是 QQ 语音（silk）")
             print(f"     设计：{V.VOICE_DESIGNS[c]}")
