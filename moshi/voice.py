@@ -2,10 +2,15 @@
 
 需求（协作方 2026-09-01）：她像真人一样选择发文字或发语音；**发文字→纯文字；发语音→仅有语音**。
 
-- 合成：edge-tts（免费；音色 zh-CN-XiaoxiaoNeural，语速 -12%，音调 -3Hz——不甜不嗲，配她
-  的沉静；Xiaohan 等音色已在 edge 服务下线，Xiaoxiao 可用）；
+引擎（可换；自动选择）：
+- **MiMo VoiceDesign（默认）**：小米 MiMo TTS 音色设计模型（mimo-v2.5-tts-voicedesign）——
+  用"音色设计文本"生成**专门的她**的声音（同一份设计文本 → 同一种声音，近似稳定）；
+  OpenAI 兼容接口：POST /v1/chat/completions，messages=[{user: 音色设计}, {assistant: 要念的文本}]，
+  audio.format=mp3 → choices[0].message.audio.data（base64）。密钥：config/secrets.json 的 MIMO_API_KEY。
+- **Edge TTS（兜底）**：免费；音色 zh-CN-XiaoxiaoNeural，语速 -12%，音调 -3Hz。
+
 - 格式：QQ 官方要求 silk（file_type=3）：ffmpeg(mp3→pcm) + tools/silk_encoder.exe(pcm→silk)；
-- 选择：`decide_voice()` —— 机制决定（性格/关系统/她此刻的日子/这轮的场合），非随机敷衍：
+- 选择：`decide_voice()` —— 机制决定（性格/关系/她此刻的日子/这轮的场合），非随机敷衍：
   * 长话 → 打字（真人长话用文字）；
   * 生气/倦怠 → 文字，甚至沉默（冷冰冰更真实）；
   * 她主动想你 → 高概率语音（"想你了"要能听见）；
@@ -14,30 +19,125 @@
 - 缓存：data/voice_cache/（gitignore 覆盖 data/）。
 
 依赖：edge-tts（pip）；ffmpeg 与 tools/silk_encoder.exe（本仓库已带，编译自 foyoux/silk-codec =
-kn007 SILK SDK 源，Skype 许可，仅自用）。
+kn007 SILK SDK 源，Skype 许可，仅自用）。MiMo 走标准库 urllib。
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
+import json
 import os
 import random
 import subprocess
-import sys
 import tempfile
+import urllib.request
 from pathlib import Path
 
-import edge_tts
+try:
+    import edge_tts
+except Exception:
+    edge_tts = None
 
-# 音色（配她：沉静内敛，不甜不嗲）
-VOICE = "zh-CN-XiaoxiaoNeural"
-RATE = "-12%"       # 语速稍慢（她话不多，也不急）
-PITCH = "-3Hz"      # 音调略低（更平静，不嗲）
+# ── MiMo VoiceDesign（默认引擎）──
+MIMO_BASE = "https://api.xiaomimimo.com/v1"
+MIMO_MODEL = "mimo-v2.5-tts-voicedesign"
+
+# ── 音色候选（设计文本 = 生成"她的声音"的配方；同一份文本 → 同一种声音）──
+VOICE_DESIGNS: dict[str, str] = {
+    "A": (
+        "二十多岁的中国女性，声音平静内敛，语气克制，语速偏慢，音量不大。"
+        "音色中低，略带一点清冷和极轻的沙哑，像安静地、想着事情说话；"
+        "不甜、不撒娇、不刻意温柔，情绪起伏小，偶尔有一声轻轻的叹息。"
+    ),
+    "B": (
+        "二十多岁的中国女性，声音干净自然，中低音色，语速适中偏慢。"
+        "说话带一点点疏离感但不出冷，像安静温柔的邻家姐姐；"
+        "平实、耐听、没有表演感，偶尔在句尾轻轻放下来。"
+    ),
+    "C": (
+        "二十多岁的中国女性，声音轻、低、软但克制，语速较慢，音量偏小。"
+        "像深夜压低声音跟你说的话，安静、让人安心，不情绪化，"
+        "话不多，但每句都落得很稳。"
+    ),
+}
+VOICE_DESIGN_DEFAULT = "A"   # 候选音频试听后，把选中的字母定在这里
+
+# Edge 兜底参数（MiMo 未配置时才用）
+EDGE_VOICE = "zh-CN-XiaoxiaoNeural"
+EDGE_RATE = "-12%"
+EDGE_PITCH = "-3Hz"
 
 _TOOLS = Path(__file__).resolve().parents[1] / "tools"
 _SILK_ENC = _TOOLS / "silk_encoder.exe"
 CACHE_DIR = Path(__file__).resolve().parents[1] / "data" / "voice_cache"
+_SECRETS = Path(__file__).resolve().parents[1] / "config" / "secrets.json"
+
+
+def mimo_key() -> str:
+    """MiMo TTS 密钥：环境变量 MIMO_API_KEY → config/secrets.json。"""
+    env = os.environ.get("MIMO_API_KEY", "").strip()
+    if env:
+        return env
+    try:
+        if _SECRETS.exists():
+            v = (json.loads(_SECRETS.read_text(encoding="utf-8")).get("MIMO_API_KEY") or "").strip()
+            if v and not v.startswith("在此"):
+                return v
+    except Exception:
+        pass
+    return ""
+
+
+def synth_text(text: str, voice_design: str | None = None) -> Path:
+    """合成一句话 → mp3（引擎自动选择：MiMo 配了密钥用 MiMo（她的专有音色），否则 Edge 兜底）。"""
+    if mimo_key():
+        return synth_mimo(text, voice_design or VOICE_DESIGN_DEFAULT)
+    if edge_tts is None:
+        raise RuntimeError("未配置 MiMo 密钥且 edge-tts 未安装")
+    return synth_edge(text)
+
+
+def synth_mimo(text: str, voice_design: str) -> Path:
+    """MiMo VoiceDesign：user=音色设计文本，assistant=要念的文本（OpenAI 兼容）。"""
+    payload = {
+        "model": MIMO_MODEL,
+        "messages": [
+            {"role": "user", "content": VOICE_DESIGNS.get(voice_design, voice_design)},
+            {"role": "assistant", "content": text},
+        ],
+        "audio": {"format": "mp3"},
+    }
+    req = urllib.request.Request(
+        f"{MIMO_BASE}/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json",
+                 "Authorization": f"Bearer {mimo_key()}"},
+        method="POST")
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    b64 = data["choices"][0]["message"]["audio"]["data"]
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    path = CACHE_DIR / f"mimo_{voice_design}_{hashlib.md5(text.encode('utf-8')).hexdigest()[:10]}.mp3"
+    path.write_bytes(base64.b64decode(b64))
+    return path
+
+
+def synth_edge(text: str) -> Path:
+    """Edge TTS（兜底）。"""
+    out_dir = CACHE_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"tts_{hashlib.md5((EDGE_VOICE + text).encode('utf-8')).hexdigest()[:12]}.mp3"
+    if path.exists() and path.stat().st_size > 0:
+        return path
+    async def _go() -> None:
+        c = edge_tts.Communicate(text, voice=EDGE_VOICE, rate=EDGE_RATE, pitch=EDGE_PITCH)
+        await c.save(str(path))
+    asyncio.run(_go())
+    if not path.exists() or path.stat().st_size == 0:
+        raise RuntimeError("edge-tts 合成失败（网络/音色不可用）")
+    return path
 
 
 def _ffmpeg() -> str:
@@ -92,14 +192,15 @@ def mp3_to_silk(mp3_path: Path) -> Path:
         return silk
 
 
-def ensure_silk(text: str) -> Path:
-    """她的一句话 → silk 文件（带缓存）。"""
+def ensure_silk(text: str, voice_design: str | None = None) -> Path:
+    """她的一句话 → silk 文件（带缓存；合成引擎自动选择）。"""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    key = hashlib.md5((VOICE + text).encode("utf-8")).hexdigest()[:12]
+    design = voice_design or VOICE_DESIGN_DEFAULT
+    key = hashlib.md5((design + text).encode("utf-8")).hexdigest()[:12]
     silk = CACHE_DIR / f"v_{key}.silk"
     if silk.exists() and silk.stat().st_size > 0:
         return silk
-    return mp3_to_silk(synth_mp3(text))
+    return mp3_to_silk(synth_text(text, voice_design=design))
 
 
 # ── 她选文字还是语音（像真人：机制决定，非随机敷衍）──
@@ -141,4 +242,7 @@ def decide_voice(person, intent: str, reply: str, turn_kind: str = "reply") -> b
 
 def describe_voice() -> str:
     """她声音的"设定"（供文档/调试；不是她自我盘点）。"""
-    return f"Edge TTS · {VOICE}（语速 {RATE}，音调 {PITCH}）——平静、略慢、不甜不嗲"
+    if mimo_key():
+        return (f"MiMo VoiceDesign · 候选「{VOICE_DESIGN_DEFAULT}」"
+                f"（{VOICE_DESIGNS.get(VOICE_DESIGN_DEFAULT, '')[:30]}…）")
+    return f"Edge TTS · {EDGE_VOICE}（语速 {EDGE_RATE}，音调 {EDGE_PITCH}）——平静、略慢、不甜不嗲（兜底）"

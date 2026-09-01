@@ -63,11 +63,13 @@ class MoshiQQ(botpy.Client):
 
     def __init__(self, session: Session, tick_minutes: int = 45,
                  voice: bool = True, voice_url_base: str = "http://127.0.0.1:8902",
+                 voice_design: str = voice_mod.VOICE_DESIGN_DEFAULT,
                  **kwargs) -> None:
         super().__init__(**kwargs)
         self.session = session
         self.tick_minutes = tick_minutes
         self.voice = voice
+        self.voice_design = voice_design
         self.voice_url_base = voice_url_base.rstrip("/")
         self.last_openid: str | None = None   # 最近和她对话过的用户（主动推送目标）
         self._lock = asyncio.Lock()
@@ -131,7 +133,7 @@ class MoshiQQ(botpy.Client):
 
     async def _send_voice(self, message, text: str) -> None:
         """发语音（silk）—— 官方 file_type=3。QQ 服务端需能访问 voice_url_base。"""
-        silk = await asyncio.to_thread(voice_mod.ensure_silk, text)
+        silk = await asyncio.to_thread(voice_mod.ensure_silk, text, self.voice_design)
         url = f"{self.voice_url_base}/voice/{silk.name}"
         if hasattr(message, "group_openid") and message.group_openid:
             await self.api.post_group_file(group_openid=message.group_openid,
@@ -150,7 +152,7 @@ class MoshiQQ(botpy.Client):
                 if text and self.last_openid:
                     if self.voice and voice_mod.decide_voice(self.session.she, "chat",
                                                              text, turn_kind="touch"):
-                        silk = await asyncio.to_thread(voice_mod.ensure_silk, text)
+                        silk = await asyncio.to_thread(voice_mod.ensure_silk, text, self.voice_design)
                         url = f"{self.voice_url_base}/voice/{silk.name}"
                         await self.api.post_c2c_file(openid=self.last_openid,
                                                      file_type=3, url=url, srv_send_msg=True)
@@ -176,6 +178,9 @@ def main() -> None:
     ap.add_argument("--no-voice", action="store_true", help="关闭语音（她只说文字）")
     ap.add_argument("--voice-url-base", default="http://127.0.0.1:8902",
                     help="QQ 服务端拉取语音文件的地址（公网可访问；云端部署时改）")
+    ap.add_argument("--voice-design", default=voice_mod.VOICE_DESIGN_DEFAULT,
+                    choices=tuple(voice_mod.VOICE_DESIGNS),
+                    help="音色候选（先 python -m moshi.voice_test 试听再定；默认 A）")
     args = ap.parse_args()
 
     appid, secret = _secret("QQ_APPID"), _secret("QQ_APP_SECRET")
@@ -194,6 +199,7 @@ def main() -> None:
         tick_minutes=args.tick_minutes,
         voice=not args.no_voice,
         voice_url_base=args.voice_url_base,
+        voice_design=args.voice_design,
         intents=botpy.Intents(public_messages=True, public_guild_messages=True),
         is_sandbox=args.sandbox,
     )
