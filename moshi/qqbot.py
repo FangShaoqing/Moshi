@@ -22,12 +22,14 @@ import asyncio
 import json
 import os
 import re
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import botpy
 from botpy.message import C2CMessage, GroupMessage
 
 from .runtime import Session
+from . import voice as voice_mod
 
 _CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "secrets.json"
 
@@ -57,20 +59,46 @@ def _clean(text: str) -> str:
 
 
 class MoshiQQ(botpy.Client):
-    """官方 QQBOT：消息 → Session（同一条她）→ 回复。"""
+    """官方 QQBOT：消息 → Session（同一条她）→ 回复（文字或语音——她选）。"""
 
-    def __init__(self, session: Session, tick_minutes: int = 45, **kwargs) -> None:
+    def __init__(self, session: Session, tick_minutes: int = 45,
+                 voice: bool = True, voice_url_base: str = "http://127.0.0.1:8902",
+                 **kwargs) -> None:
         super().__init__(**kwargs)
         self.session = session
         self.tick_minutes = tick_minutes
+        self.voice = voice
+        self.voice_url_base = voice_url_base.rstrip("/")
         self.last_openid: str | None = None   # 最近和她对话过的用户（主动推送目标）
         self._lock = asyncio.Lock()
         self._tick_task: asyncio.Task | None = None
+        self._voice_server = None             # 语音文件 HTTP 服务（QQ 那边拉取 silk 用）
 
     async def on_ready(self) -> None:
         print(f"[qqbot] 已连接。她是 {self.session.she.age} 岁的陈默识（seed={self.session.seed}）。")
+        if self.voice:
+            self._start_voice_server()
+            print(f"[qqbot] 她可以说话：{voice_mod.describe_voice()}"
+                  f"（语音文件服务 {self.voice_url_base}/voice/ —— QQ 需能访问该地址）")
         if self.tick_minutes > 0:
             self._tick_task = asyncio.create_task(self._tick_loop())
+
+    def _start_voice_server(self) -> None:
+        """把 data/voice_cache/ 挂到 HTTP（QQ 官方接口拉取媒体文件用）。"""
+        try:
+            vc = voice_mod.CACHE_DIR
+            vc.mkdir(parents=True, exist_ok=True)
+            host, port = "0.0.0.0", 8902
+            try:
+                port = int(self.voice_url_base.split(":")[-1].split("/")[0])
+            except Exception:
+                pass
+            handler = lambda *a, **k: SimpleHTTPRequestHandler(*a, directory=str(vc), **k)
+            self._voice_server = ThreadingHTTPServer((host, port), handler)
+            import threading
+            threading.Thread(target=self._voice_server.serve_forever, daemon=True).start()
+        except Exception as e:
+            print(f"[qqbot] 语音文件服务启动失败：{e}")
 
     # ── 私聊（单独对话）──
     async def on_c2c_message_create(self, message: C2CMessage) -> None:
@@ -89,10 +117,29 @@ class MoshiQQ(botpy.Client):
         async with self._lock:                        # 一次只处理一句（她的状态是连续的）
             out = await asyncio.to_thread(self.session.on_message, text)
         reply = (out.get("reply") or "……").strip()
+        # ── 她选：这轮发文字还是发语音（像真人；语音=仅有语音，不带文字）──
+        if self.voice and voice_mod.decide_voice(self.session.she, "chat", reply):
+            try:
+                await self._send_voice(message, reply)
+                return
+            except Exception as e:
+                print(f"[qqbot] 语音发送失败，降级文字：{e}")
         try:
             await message.reply(content=reply)
         except Exception as e:
             print(f"[qqbot] 回复失败：{e}")
+
+    async def _send_voice(self, message, text: str) -> None:
+        """发语音（silk）—— 官方 file_type=3。QQ 服务端需能访问 voice_url_base。"""
+        silk = await asyncio.to_thread(voice_mod.ensure_silk, text)
+        url = f"{self.voice_url_base}/voice/{silk.name}"
+        if hasattr(message, "group_openid") and message.group_openid:
+            await self.api.post_group_file(group_openid=message.group_openid,
+                                           file_type=3, url=url, srv_send_msg=True)
+        else:
+            await self.api.post_c2c_file(openid=message.author.user_openid,
+                                         file_type=3, url=url, srv_send_msg=True)
+        print(f"[qqbot] 她发语音了：{text[:30]}…")
 
     # ── 主动：她会突然想起你（低频；经官方接口私聊推送）──
     async def _tick_loop(self) -> None:
@@ -101,9 +148,17 @@ class MoshiQQ(botpy.Client):
             try:
                 text = await asyncio.to_thread(self.session.tick)
                 if text and self.last_openid:
-                    await self.api.post_c2c_message(
-                        openid=self.last_openid, msg_type=0, content=text)
-                    print(f"[qqbot] 她想你了：{text[:40]}…")
+                    if self.voice and voice_mod.decide_voice(self.session.she, "chat",
+                                                             text, turn_kind="touch"):
+                        silk = await asyncio.to_thread(voice_mod.ensure_silk, text)
+                        url = f"{self.voice_url_base}/voice/{silk.name}"
+                        await self.api.post_c2c_file(openid=self.last_openid,
+                                                     file_type=3, url=url, srv_send_msg=True)
+                        print(f"[qqbot] 她想你了（语音）：{text[:30]}…")
+                    else:
+                        await self.api.post_c2c_message(
+                            openid=self.last_openid, msg_type=0, content=text)
+                        print(f"[qqbot] 她想你了：{text[:40]}…")
             except Exception as e:
                 print(f"[qqbot] tick 失败：{e}")
 
@@ -118,6 +173,9 @@ def main() -> None:
                     help="运行标签（verify=验证期 / production=正式期）")
     ap.add_argument("--mode-policy", default="warn", choices=("warn", "strict"),
                     help="正式期遇到验证期数据：warn=继续运行并提醒（默认，不强制转档）/ strict=拒绝")
+    ap.add_argument("--no-voice", action="store_true", help="关闭语音（她只说文字）")
+    ap.add_argument("--voice-url-base", default="http://127.0.0.1:8902",
+                    help="QQ 服务端拉取语音文件的地址（公网可访问；云端部署时改）")
     args = ap.parse_args()
 
     appid, secret = _secret("QQ_APPID"), _secret("QQ_APP_SECRET")
@@ -134,6 +192,8 @@ def main() -> None:
     client = MoshiQQ(
         session=session,
         tick_minutes=args.tick_minutes,
+        voice=not args.no_voice,
+        voice_url_base=args.voice_url_base,
         intents=botpy.Intents(public_messages=True, public_guild_messages=True),
         is_sandbox=args.sandbox,
     )

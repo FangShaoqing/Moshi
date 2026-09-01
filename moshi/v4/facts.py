@@ -64,6 +64,28 @@ KEEPS_POOL: list[str] = [
     "睡前会看一会儿书",
 ]
 
+# ── 形象（她长什么样 = 事实；被问到按此描述，"人生不许编"同样适用）──
+# 普通、素净、耐看——配她的沉静内敛
+APPEARANCE_HEIGHT: list[str] = ["158cm", "162cm", "165cm"]
+APPEARANCE_HAIR: list[str] = [
+    "及肩的黑发，没怎么打理",
+    "低马尾，几缕碎发",
+    "齐肩直发，常别在耳后",
+    "黑发扎起来，利落",
+]
+APPEARANCE_FACE: list[str] = [
+    "长相普通，胜在耐看",
+    "眉眼淡淡的，看着安静",
+    "脸色素净，不化妆的日子居多",
+    "笑起来很淡，平时安安静静",
+]
+APPEARANCE_STYLE: list[str] = [
+    "衣柜里多是素色衬衫和牛仔裤",
+    "常穿一件洗旧的卫衣",
+    "素色的裙子，不怎么挑款",
+    "冬天的长外套，夏天的白T恤",
+]
+
 # 住所
 RESIDENCE_POOL: list[str] = ["学校宿舍", "合租的小单间", "家里人给租的房子", "城中村的一间"]
 
@@ -106,6 +128,11 @@ class Facts:
     residence: str = ""                  # 住所（宿舍/租房等）
     interests: tuple[str, ...] = ()      # 兴趣爱好（2-3 个）
     keeps: str = ""                      # 生活习性（简单一句）
+    # 形象（她长什么样——事实；配她的沉静内敛：普通、素净、耐看）
+    height: str = ""                     # 身高
+    hair: str = ""                       # 头发
+    face: str = ""                       # 长相气质
+    style: str = ""                      # 日常穿着
     # 情感
     relationship_status: str = "单身"     # 单身/有过一段/恋爱中（由年龄+演化合理推断）
 
@@ -121,6 +148,7 @@ class Facts:
             f"求学：{self.education_current}{'，' + self.school_type if self.school_type else ''}，专业{self.major if self.major else '（未定）'}",
             f"工作：{self.job}",
             f"生活：{self.residence}；喜欢{'、'.join(self.interests) if self.interests else '（未定）'}；{self.keeps}",
+            f"形象：{self.height}；{self.hair}；{self.face}；{self.style}",
             f"情感：{self.relationship_status}",
         ]
         return "\n".join(parts)
@@ -155,6 +183,10 @@ def generate_facts(rng: random.Random, birth_date: datetime.date,
     interests = tuple(rng.sample(INTEREST_POOL, k=min(3, len(INTEREST_POOL))))
     keeps = rng.choice(KEEPS_POOL)
     residence = rng.choice(RESIDENCE_POOL)
+    height = rng.choice(APPEARANCE_HEIGHT)
+    hair = rng.choice(APPEARANCE_HAIR)
+    face = rng.choice(APPEARANCE_FACE)
+    style = rng.choice(APPEARANCE_STYLE)
     if age <= 21:
         education_current = f"在读大学（{birth_date.year + 18}年前后入学）"
         job = "暂无（在读学生）"
@@ -187,6 +219,10 @@ def generate_facts(rng: random.Random, birth_date: datetime.date,
         residence=residence,
         interests=interests,
         keeps=keeps,
+        height=height,
+        hair=hair,
+        face=face,
+        style=style,
         relationship_status=relationship_status,
     )
 
@@ -197,6 +233,7 @@ _FACT_FIELDS = (
     "family_class", "siblings", "family_structure",
     "school_type", "education_current", "major",
     "job", "working_city", "residence", "keeps", "relationship_status",
+    "height", "hair", "face", "style",
 )
 
 

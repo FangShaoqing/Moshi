@@ -1,3 +1,5 @@
-# 运行依赖（Moshi 本体 100% 标准库；仅通道适配器需要）：
+# 运行依赖（Moshi 本体 100% 标准库；仅通道/声音适配器需要）：
 #  - QQ 官方机器人（moshi/qqbot.py）
 qq-botpy>=1.2.1
+#  - 她的声音（moshi/voice.py；edge-tts 免费合成；silk 转换用仓库自带 tools/silk_encoder.exe + 系统 ffmpeg）
+edge-tts>=7.0
