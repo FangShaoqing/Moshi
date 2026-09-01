@@ -16,3 +16,6 @@ venv/
 .vscode/
 *.log
 tmp_test_*.py
+
+# ── 穿透工具（下载即用，不入库；silk_encoder.exe 是项目资产，保留）──
+tools/cloudflared.exe
