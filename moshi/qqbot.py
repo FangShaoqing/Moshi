@@ -37,6 +37,10 @@ _CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "secrets.json"
 # 群消息里的 "被@" 标记（<@!xxxx> / <@xxxx>）
 _MENTION_RE = re.compile(r"<@!?\d+(?:\.\d+)?>")
 
+# 对方明确要她"说话"（语音请求）：直接发语音，不走"她选"的决策
+_VOICE_REQUEST_WORDS = ("语音", "说句话", "说两句", "听听你的声音", "你的声音",
+                        "发个语音", "语音消息", "发一段语音", "说给我听")
+
 
 def _secret(name: str) -> str:
     """读取密钥：环境变量优先，config/secrets.json 兜底。"""
@@ -121,6 +125,18 @@ class MoshiQQ(botpy.Client):
             out = await asyncio.to_thread(self.session.on_message, text)
         reply = (out.get("reply") or "……").strip()
         await asyncio.sleep(random.uniform(0.8, 3.0))  # 真人打字节奏（消息不是秒回的）
+        # ── 明确要语音 → 她直接发语音（系统发；不走"她选"，也绝不让文字冒充语音）──
+        if self.voice and any(w in text for w in _VOICE_REQUEST_WORDS):
+            try:
+                await self._send_voice(message, reply[:60])
+                return
+            except Exception as e:
+                print(f"[qqbot] 语音发送失败：{e}")
+                try:
+                    await message.reply(content="……语音我这边发不出去，先这样吧。")
+                except Exception:
+                    pass
+                return
         # ── 她选：这轮发文字还是发语音（像真人；语音=仅有语音，不带文字）──
         if self.voice and voice_mod.decide_voice(self.session.she, "chat", reply):
             try:
