@@ -100,7 +100,11 @@ def synth_text(text: str, voice_design: str | None = None) -> Path:
 
 
 def synth_mimo(text: str, voice_design: str) -> Path:
-    """MiMo VoiceDesign：user=音色设计文本，assistant=要念的文本（OpenAI 兼容）。"""
+    """MiMo VoiceDesign：user=音色设计文本，assistant=要念的文本（OpenAI 兼容）。
+
+    鉴权：官方支持两种头（Bearer / api-key）；401 时自动换另一种重试一次
+    （个别网关对头敏感）；仍失败则给出可操作的提示。
+    """
     payload = {
         "model": MIMO_MODEL,
         "messages": [
@@ -109,19 +113,35 @@ def synth_mimo(text: str, voice_design: str) -> Path:
         ],
         "audio": {"format": "mp3"},
     }
-    req = urllib.request.Request(
-        f"{MIMO_BASE}/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json",
-                 "Authorization": f"Bearer {mimo_key()}"},
-        method="POST")
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-    b64 = data["choices"][0]["message"]["audio"]["data"]
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    path = CACHE_DIR / f"mimo_{voice_design}_{hashlib.md5(text.encode('utf-8')).hexdigest()[:10]}.mp3"
-    path.write_bytes(base64.b64decode(b64))
-    return path
+    key = mimo_key()
+    last_err: str = ""
+    for header in ("Authorization", "api-key"):
+        value = f"Bearer {key}" if header == "Authorization" else key
+        req = urllib.request.Request(
+            f"{MIMO_BASE}/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", header: value},
+            method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            b64 = data["choices"][0]["message"]["audio"]["data"]
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            path = CACHE_DIR / f"mimo_{voice_design}_{hashlib.md5(text.encode('utf-8')).hexdigest()[:10]}.mp3"
+            path.write_bytes(base64.b64decode(b64))
+            return path
+        except urllib.error.HTTPError as e:
+            last_err = f"{e.code} {e.reason}"
+            if e.code in (401, 403):
+                continue                     # 换另一种鉴权头再试一次
+            raise RuntimeError(f"MiMo 合成失败：{last_err}")
+        except Exception as e:
+            raise RuntimeError(f"MiMo 合成失败：{type(e).__name__} {e}") from e
+    raise RuntimeError(
+        "MiMo 合成失败：401 Unauthorized —— 密钥未通过鉴权。常见原因：\n"
+        "  ① 密钥刚创建，需等几分钟激活（过一会儿重试即可）；\n"
+        "  ② 检查 config/secrets.json 的 MIMO_API_KEY 是否完整、无多余空格、不是占位符；\n"
+        "  ③ 确认密钥是在 mimo.mi.com 官网创建的（不是其他平台的）且账户有配额。")
 
 
 def synth_edge(text: str) -> Path:
