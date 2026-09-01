@@ -37,6 +37,17 @@ _CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "secrets.json"
 # 群消息里的 "被@" 标记（<@!xxxx> / <@xxxx>）
 _MENTION_RE = re.compile(r"<@!?\d+(?:\.\d+)?>")
 
+
+class _VoiceHandler(SimpleHTTPRequestHandler):
+    """语音文件服务：把 /voice/<file> 映射到 CACHE_DIR/<file>（QQ 端拉取路径与本地目录解耦）。"""
+
+    def translate_path(self, path: str) -> str:
+        path = (path or "").split("?", 1)[0]
+        if path.startswith("/voice/"):
+            path = path[len("/voice/"):]           # /voice/x.silk → /x.silk
+        return super().translate_path("/" + path)
+
+
 # 对方明确要她"说话"（语音请求）：直接发语音，不走"她选"的决策
 _VOICE_REQUEST_WORDS = ("发语音", "发一条语音", "发个语音", "发一段语音", "发条语音",
                         "说句话", "说两句", "听听你的声音", "你的声音", "语音消息", "说给我听")
@@ -100,7 +111,7 @@ class MoshiQQ(botpy.Client):
                 port = int(self.voice_url_base.split(":")[-1].split("/")[0])
             except Exception:
                 pass
-            handler = lambda *a, **k: SimpleHTTPRequestHandler(*a, directory=str(vc), **k)
+            handler = lambda *a, **k: _VoiceHandler(*a, directory=str(vc), **k)
             self._voice_server = ThreadingHTTPServer((host, port), handler)
             import threading
             threading.Thread(target=self._voice_server.serve_forever, daemon=True).start()
