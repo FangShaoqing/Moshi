@@ -38,8 +38,8 @@ _CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "secrets.json"
 _MENTION_RE = re.compile(r"<@!?\d+(?:\.\d+)?>")
 
 # 对方明确要她"说话"（语音请求）：直接发语音，不走"她选"的决策
-_VOICE_REQUEST_WORDS = ("语音", "说句话", "说两句", "听听你的声音", "你的声音",
-                        "发个语音", "语音消息", "发一段语音", "说给我听")
+_VOICE_REQUEST_WORDS = ("发语音", "发一条语音", "发个语音", "发一段语音", "发条语音",
+                        "说句话", "说两句", "听听你的声音", "你的声音", "语音消息", "说给我听")
 
 
 def _secret(name: str) -> str:
