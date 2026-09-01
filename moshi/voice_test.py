@@ -17,7 +17,21 @@ from pathlib import Path
 
 from . import voice as V
 
-SAMPLE = "嗯，我在。你最近怎么样？"
+SAMPLE = ("嗯，我在。你最近怎么样？\n"
+          "我今天没什么事，一直在看书。楼下那只橘猫又来了，我把剩下的猫粮都给它了。\n"
+          "说不上忙还是不忙，就是日子平平的。你呢？要是忙就先忙，我没什么要紧的。")
+
+
+def _duration(path: Path) -> str:
+    """音频时长（ffprobe；没有就返回空）。"""
+    import subprocess
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                            "-of", "default=nw=1:nk=1", str(path)],
+                           capture_output=True, text=True, timeout=20)
+        return f"　时长 {float(r.stdout.strip()):.1f}s" if r.stdout.strip() else ""
+    except Exception:
+        return ""
 
 
 def main() -> None:
@@ -45,7 +59,7 @@ def main() -> None:
             else:
                 mp3 = V.synth_edge(args.text)
             silk = V.mp3_to_silk(mp3)
-            print(f"【{c}】{Path(mp3)}")
+            print(f"【{c}】{Path(mp3)}{_duration(mp3)}")
             print(f"     {Path(silk)}   <- 这个就是 QQ 语音（silk）")
             print(f"     设计：{V.VOICE_DESIGNS[c]}")
         except Exception as e:
