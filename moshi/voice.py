@@ -65,7 +65,7 @@ VOICE_DESIGNS: dict[str, str] = {
         "年轻、干净、不情绪化，偶尔带一点点困意；话不多，每句都落得很轻。"
     ),
 }
-VOICE_DESIGN_DEFAULT = "A"   # 候选音频试听后，把选中的字母定在这里
+VOICE_DESIGN_DEFAULT = "C"   # 选定（试听结论：C 很不错；A 太像小学生，B 怪）
 
 # Edge 兜底参数（MiMo 未配置时才用）
 EDGE_VOICE = "zh-CN-XiaoxiaoNeural"
