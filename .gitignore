@@ -1,0 +1,18 @@
+# ── 密钥与隐私（绝不提交）──
+config/secrets.json
+
+# ── 她的数据（含对你的记忆；一个种子一个宇宙）──
+data/
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# ── 工具/日志 ──
+.idea/
+.vscode/
+*.log
+tmp_test_*.py
