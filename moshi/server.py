@@ -174,11 +174,21 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=cfg.get("seed", 20260827))
     ap.add_argument("--port", type=int, default=cfg.get("port", 8901))
     ap.add_argument("--bind", default=cfg.get("bind", "127.0.0.1"))
-    ap.add_argument("--mode", default=cfg.get("mode", "verify"))
+    ap.add_argument("--mode", default=cfg.get("mode", "verify"),
+                    choices=("verify", "production"),
+                    help="运行标签（verify=验证期 / production=正式期）")
+    ap.add_argument("--mode-policy", default=cfg.get("mode_policy", "warn"),
+                    choices=("warn", "strict"),
+                    help="正式期遇到验证期数据：warn=继续运行并提醒（默认，不强制转档）/ strict=拒绝")
     args = ap.parse_args()
-    cfg.update({"seed": args.seed, "port": args.port, "bind": args.bind, "mode": args.mode})
+    cfg.update({"seed": args.seed, "port": args.port, "bind": args.bind,
+                "mode": args.mode, "mode_policy": args.mode_policy})
 
-    session = Session(args.seed, mode=args.mode)
+    try:
+        session = Session(args.seed, mode=args.mode, policy=args.mode_policy)
+    except RuntimeError as e:
+        print(f"[server] {e}")
+        return
     if session.warning:
         print(f"[server] {session.warning}")
     server = ThreadingHTTPServer((args.bind, args.port), make_handler(session, cfg))

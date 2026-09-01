@@ -114,6 +114,10 @@ def main() -> None:
     ap.add_argument("--tick-minutes", type=int, default=45,
                     help="她主动找你的间隔（分钟；0=关闭）")
     ap.add_argument("--sandbox", action="store_true", help="沙箱环境（仅测试）")
+    ap.add_argument("--mode", default="verify", choices=("verify", "production"),
+                    help="运行标签（verify=验证期 / production=正式期）")
+    ap.add_argument("--mode-policy", default="warn", choices=("warn", "strict"),
+                    help="正式期遇到验证期数据：warn=继续运行并提醒（默认，不强制转档）/ strict=拒绝")
     args = ap.parse_args()
 
     appid, secret = _secret("QQ_APPID"), _secret("QQ_APP_SECRET")
@@ -122,7 +126,11 @@ def main() -> None:
         print("        （QQ开放平台 → 机器人 → 开发设置 里获取；不要提交到版本库）")
         return
 
-    session = Session(args.seed)
+    try:
+        session = Session(args.seed, mode=args.mode, policy=args.mode_policy)
+    except RuntimeError as e:
+        print(f"[qqbot] {e}")
+        return
     client = MoshiQQ(
         session=session,
         tick_minutes=args.tick_minutes,

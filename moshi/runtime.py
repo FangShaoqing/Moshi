@@ -28,13 +28,20 @@ from .v4.extract import remember_from_input
 
 
 class Session:
-    """通道无关的"她"（单用户会话；一个种子=她一人）。"""
+    """通道无关的"她"（单用户会话；一个种子=她一人）。
 
-    def __init__(self, seed: int, mode: str = "verify") -> None:
+    mode：运行标签（verify=验证期 / production=正式期）。
+    policy（仅 mode=production 时有效）：
+      - warn（默认）：验证期数据**继续运行**，只提醒可转档（不强制——转档永远显式）；
+      - strict：严格防污染——验证期数据拒绝加载（请先 promote 或 --clear）。
+    """
+
+    def __init__(self, seed: int, mode: str = "verify", policy: str = "warn") -> None:
         self.seed = seed
         self.mode = mode
+        self.policy = policy
         # ── 相遇定格：她的人生在"相遇那天"生成完毕；此后由日子引擎推进 ──
-        life = load_life(seed, allow_verify=(mode == "verify"))
+        life = load_life(seed, allow_verify=True)
         meeting_str = (life.get("life") or {}).get("meeting_date") or ""
         meeting_date = (datetime.date.fromisoformat(meeting_str)
                         if meeting_str else datetime.date.today())
@@ -58,11 +65,29 @@ class Session:
                                         rng=_random.Random(f"{seed}:rel"))
 
         # 恢复持久化（她跨会话/跨渠道延续）
-        loaded = load_person(she, seed, allow_verify=(mode == "verify"))
+        loaded = load_person(she, seed, allow_verify=True)
         self.history: list[dict] = loaded.get("history") or []
         if loaded.get("warning"):
             print(f"[runtime] {loaded['warning']}")
         self.warning = loaded.get("warning")
+
+        # ── 标签策略（不强制转档：标签随数据出身走；转档唯一入口 = promote 命令）──
+        data_mode = (life.get("mode") if life.get("found")
+                     else (loaded.get("mode") if loaded.get("found") else None))
+        if data_mode is None:
+            data_mode = mode                      # 新她：按运行标签落盘
+        if mode == "production" and data_mode == "verify":
+            if policy == "strict":
+                raise RuntimeError(
+                    "正式期（严格策略）检测到验证期数据（mode=verify）。\n"
+                    "  ① 要延续这段关系：python -m moshi.promote --seed N（显式转档，一次性原子）\n"
+                    "  ② 不要这段关系：python -m moshi.clear_data（清档重来）")
+            print("[runtime] ⚠️ 正式期运行验证期数据：不强制转档，可继续使用；"
+                  "如需正式期标签，执行 python -m moshi.promote --seed "
+                  f"{seed}（显式、一次性、原子；她的一切都会延续）")
+        self.mode = data_mode                     # 数据标签 = 她自己的出身（verify 保持 verify）
+        self.warning = self.warning or (data_mode == "verify" and mode == "production" and
+                                        "验证期数据（未转档，已继续运行）" or None)
 
         self.world_state = self.result["world"]
         if life.get("found"):
