@@ -76,10 +76,9 @@ _SECRETS = Path(__file__).resolve().parents[1] / "config" / "secrets.json"
 
 
 def mimo_key() -> str:
-    """MiMo TTS 密钥：环境变量 MIMO_API_KEY → config/secrets.json。"""
-    env = os.environ.get("MIMO_API_KEY", "").strip()
-    if env:
-        return env
+    """MiMo TTS 密钥：**配置文件优先**（你明确写的才是她的），环境变量 MIMO_API_KEY 兜底。
+
+    （以前是环境变量优先——容易在终端里被"旧变量"顶掉导致诡异 401；改文件优先。）"""
     try:
         if _SECRETS.exists():
             v = (json.loads(_SECRETS.read_text(encoding="utf-8")).get("MIMO_API_KEY") or "").strip()
@@ -87,7 +86,20 @@ def mimo_key() -> str:
                 return v
     except Exception:
         pass
-    return ""
+    return os.environ.get("MIMO_API_KEY", "").strip()
+
+
+def mimo_key_source() -> tuple[str, str]:
+    """（来源标签, 密钥）——供诊断显示：文件 / 环境变量 / 无。"""
+    try:
+        if _SECRETS.exists():
+            v = (json.loads(_SECRETS.read_text(encoding="utf-8")).get("MIMO_API_KEY") or "").strip()
+            if v and not v.startswith("在此"):
+                return ("文件", v)
+    except Exception:
+        pass
+    env = os.environ.get("MIMO_API_KEY", "").strip()
+    return ("环境变量", env) if env else ("无", "")
 
 
 def synth_text(text: str, voice_design: str | None = None) -> Path:
