@@ -161,16 +161,29 @@ class MoshiQQ(botpy.Client):
             print(f"[qqbot] 回复失败：{e}")
 
     async def _send_voice(self, message, text: str) -> None:
-        """发语音。官方支持 silk/mp3/wav/ogg（file_type=3）——用 mp3（MiMo 原生格式，一步到位）。"""
-        mp3 = await asyncio.to_thread(voice_mod.ensure_mp3, text, self.voice_design)
-        url = f"{self.voice_url_base}/voice/{mp3.name}"
-        if hasattr(message, "group_openid") and message.group_openid:
-            await self.api.post_group_file(group_openid=message.group_openid,
-                                           file_type=3, url=url, srv_send_msg=True)
-        else:
-            await self.api.post_c2c_file(openid=message.author.user_openid,
-                                         file_type=3, url=url, srv_send_msg=True)
-        print(f"[qqbot] 她发语音了：{text[:30]}…")
+        """发语音（file_type=3）。QQ 对 silk 头判定严格：按 SILK_STYLE_ORDER 依次尝试变体。"""
+        last_err: Exception | None = None
+        for style in voice_mod.SILK_STYLE_ORDER:
+            try:
+                silk = await asyncio.to_thread(voice_mod.ensure_silk, text,
+                                               self.voice_design, style=style)
+                url = f"{self.voice_url_base}/voice/{silk.name}"
+                if hasattr(message, "group_openid") and message.group_openid:
+                    await self.api.post_group_file(group_openid=message.group_openid,
+                                                   file_type=3, url=url, srv_send_msg=True)
+                else:
+                    await self.api.post_c2c_file(openid=message.author.user_openid,
+                                                 file_type=3, url=url, srv_send_msg=True)
+                print(f"[qqbot] 她发语音了（silk {style}）：{text[:30]}…")
+                return
+            except Exception as e:
+                last_err = e
+                msg = str(e)
+                if "850019" in msg or "850019" in msg or "格式不支持" in msg:
+                    print(f"[qqbot] silk 变体 {style} 被拒，换下一种…")
+                    continue
+                raise
+        raise last_err or RuntimeError("语音发送失败")
 
     # ── 主动：她会突然想起你（低频；经官方接口私聊推送）──
     async def _tick_loop(self) -> None:
@@ -181,11 +194,24 @@ class MoshiQQ(botpy.Client):
                 if text and self.last_openid:
                     if self.voice and voice_mod.decide_voice(self.session.she, "chat",
                                                              text, turn_kind="touch"):
-                        mp3 = await asyncio.to_thread(voice_mod.ensure_mp3, text, self.voice_design)
-                        url = f"{self.voice_url_base}/voice/{mp3.name}"
-                        await self.api.post_c2c_file(openid=self.last_openid,
-                                                     file_type=3, url=url, srv_send_msg=True)
-                        print(f"[qqbot] 她想你了（语音）：{text[:30]}…")
+                        last_err = None
+                        for style in voice_mod.SILK_STYLE_ORDER:
+                            try:
+                                silk = await asyncio.to_thread(voice_mod.ensure_silk, text,
+                                                               self.voice_design, style=style)
+                                await self.api.post_c2c_file(
+                                    openid=self.last_openid, file_type=3,
+                                    url=f"{self.voice_url_base}/voice/{silk.name}",
+                                    srv_send_msg=True)
+                                print(f"[qqbot] 她想你了（语音 {style}）：{text[:30]}…")
+                                break
+                            except Exception as e:
+                                last_err = e
+                                if "850019" in str(e) or "格式不支持" in str(e):
+                                    continue
+                                raise
+                        else:
+                            raise last_err or RuntimeError("tick 语音发送失败")
                     else:
                         await self.api.post_c2c_message(
                             openid=self.last_openid, msg_type=0, content=text)

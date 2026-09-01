@@ -245,15 +245,41 @@ def ensure_mp3(text: str, voice_design: str | None = None) -> Path:
     return out
 
 
-def ensure_silk(text: str, voice_design: str | None = None) -> Path:
-    """她的一句话 → silk 文件（带缓存；合成引擎自动选择；QQ 也可用 mp3——见此前的 ensure_mp3）。"""
+# ── QQNT silk 头变体（官方对头的判定严格；按序尝试）──
+SILK_STYLE_ORDER = ["02header", "raw"]    # "02header"=\x02#!SILK_V3（腾讯经典）；"raw"=裸帧
+_SILK_TEXT_HEADER = b"#!SILK_V3"
+_SILK_02_HEADER = b"\x02#!SILK_V3"
+
+
+def _silk_variant(data: bytes, style: str) -> bytes:
+    """按 QQNT 变体调整 silk 头（我们的编码器输出 '#!SILK_V3' 头 + 帧）。"""
+    frames = data[len(_SILK_TEXT_HEADER):] if data.startswith(_SILK_TEXT_HEADER) else data
+    if style == "raw":
+        return frames
+    if style == "02header":
+        return _SILK_02_HEADER + frames
+    return data                        # textheader（默认原样）
+
+
+def mp3_to_silk_variant(mp3_path: Path, style: str) -> Path:
+    """mp3 → silk 并套用指定头变体（QQ 拉取路径不变；文件名带变体区分）。"""
+    base = mp3_to_silk(mp3_path)
+    if style == "textheader":
+        return base
+    out = CACHE_DIR / (mp3_path.stem + f"_{style}.silk")
+    out.write_bytes(_silk_variant(base.read_bytes(), style))
+    return out
+
+
+def ensure_silk(text: str, voice_design: str | None = None, style: str = "02header") -> Path:
+    """她的一句话 → QQNT 兼容 silk（带缓存；style 见 SILK_STYLE_ORDER）。"""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     design = voice_design or VOICE_DESIGN_DEFAULT
     key = hashlib.md5((_design_key(design) + text).encode("utf-8")).hexdigest()[:12]
-    silk = CACHE_DIR / f"v_{key}.silk"
+    silk = CACHE_DIR / f"v_{key}_{style}.silk"
     if silk.exists() and silk.stat().st_size > 0:
         return silk
-    return mp3_to_silk(synth_text(text, voice_design=design))
+    return mp3_to_silk_variant(synth_text(text, voice_design=design), style)
 
 
 # ── 她选文字还是语音（像真人：机制决定，非随机敷衍）──
