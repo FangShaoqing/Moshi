@@ -17,5 +17,11 @@ venv/
 *.log
 tmp_test_*.py
 
+# ── 本地 TTS 工程（CosyVoice 克隆 + 权重，几 GB，不入库）──
+tmp_cosy/
+.venv-cosy/
+tmp_cosy_probe*.py
+tmp_req*.txt
+
 # ── 穿透工具（下载即用，不入库；silk_encoder.exe 是项目资产，保留）──
 tools/cloudflared.exe
