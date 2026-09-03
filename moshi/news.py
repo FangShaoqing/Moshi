@@ -173,9 +173,10 @@ def today_news(facts=None) -> list[dict]:
 
 
 def news_note(facts=None) -> str:
-    """一句话给 LLM（克制版）：'这个世界今天发生了一些事：①…；②…'——她可能知道也可能不在意。"""
+    """一句话给 LLM（克制版）：'这个世界今天发生了一些事：①… ②…'——她可能知道也可能不在意。"""
     items = today_news(facts)
     if not items:
         return ""
-    lines = [f"① {it['title']}" for it in items]
-    return "这个世界今天发生了一些事：" + "；".join(lines) + "。"
+    marks = ("①", "②")
+    lines = [f"{marks[i if i < 2 else 1]} {it['title']}" for i, it in enumerate(items[:2])]
+    return "这个世界今天发生了一些事：" + "  ".join(lines) + "。"
