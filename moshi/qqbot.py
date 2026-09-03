@@ -32,6 +32,7 @@ from botpy.message import C2CMessage, GroupMessage
 from .runtime import Session
 from . import voice as voice_mod
 from . import photo as photo_mod
+from . import voice_pool
 
 _CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "secrets.json"
 
@@ -226,6 +227,24 @@ class MoshiQQ(botpy.Client):
                 sent = await self._try_photo_push()
                 if sent:
                     continue
+                # 主动语音优先"话池"（她主动只会说那几句——锁定的 v2 声线，零等待）
+                try:
+                    pool = voice_pool.pick_pool_voice(self.session.she)
+                except Exception:
+                    pool = None
+                if pool and self.voice:
+                    try:
+                        path, pool_text = pool
+                        silk = await asyncio.to_thread(
+                            voice_mod.mp3_to_silk_variant, path, "02header")
+                        await self.api.post_c2c_file(
+                            openid=self.last_openid, file_type=3,
+                            url=f"{self.voice_url_base}/voice/{silk.name}",
+                            srv_send_msg=True)
+                        print(f"[qqbot] 她想你了（话池·锁定声线）：{pool_text[:24]}…")
+                        continue
+                    except Exception as e:
+                        print(f"[qqbot] 话池语音失败，回退合成：{e}")
                 text = await asyncio.to_thread(self.session.tick)
                 if text:
                     if self.voice and voice_mod.decide_voice(self.session.she, "chat",
