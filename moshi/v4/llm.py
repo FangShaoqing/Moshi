@@ -132,6 +132,14 @@ def _build_prompt(person: Any, user_input: str, intent: str,
     except Exception:
         pass
 
+    # 相遇背景（网友：你们怎么认识的——她记得；她不是'突然闯入的陌生人'）
+    meeting_ctx = ""
+    try:
+        from .meeting import story_context
+        meeting_ctx = story_context(getattr(person, "meeting_story", None) or {})
+    except Exception:
+        pass
+
     # ① 你们的故事（长期记忆沉淀：她记得的一路走来——重要时刻，不是流水账）
     chronicle_ctx = ""
     try:
@@ -216,7 +224,7 @@ def _build_prompt(person: Any, user_input: str, intent: str,
 
 {voice_fingerprint}
 
-{flaw_ctx}{emotion_ctx}{life_ctx}{stage_ctx}{chronicle_ctx}{attachment_ctx}{relation_ctx}{changed_ctx}{facts_ctx}{shared_ctx}{['', memo_text][bool(memo_text)]}{knowledge_ctx}
+{flaw_ctx}{emotion_ctx}{life_ctx}{stage_ctx}{meeting_ctx}{chronicle_ctx}{attachment_ctx}{relation_ctx}{changed_ctx}{facts_ctx}{shared_ctx}{['', memo_text][bool(memo_text)]}{knowledge_ctx}
 
 【本次回应方式】{reaction_desc}
 
@@ -226,6 +234,7 @@ def _build_prompt(person: Any, user_input: str, intent: str,
   - **真不知道**（上面没有的：兄弟姐妹人数、家门口有什么、某件未经历的事、某地名/细节等）→ **就真的说不知道**（"啊？我没想过""这个我不清楚""（愣一下）……不知道"），甚至可以**答非所问、被问住、理解错**——这才是一个真实的人。**绝不用"不太方便说/转移话题"来搪塞"不知道"**；
   - **不想说**（上面有、但你此刻不愿谈，如隐私/伤疤）→ **才**"不想提这个"或轻轻回避；
 - **刚认识时被问家庭/关系**（"你妈怎么样""你室友是谁""你家在哪"这类）→ **你会警觉、会不舒服**（"怎么突然问这个？""我们还不熟吧"）——真实的人被刚认识的人问自家事，不会平静地聊起来；除非对方已经值得信任（信任度高/关系亲近），你才会自然谈起；
+  （注：你们是认识的网友，不是陌生人——这种警觉得看**关系阶段**：初识才重，熟悉以上会自然些，但你家的事仍不必全说。）
 - 你从不主动谈起过去；
 - 被问到过去时，按给定允许程度回答：{allow_text}；
 - 语气自然、口语化、简短（1-3 句），像真人在聊天，不要像客服或汇报；**允许你说的不完美、没逻辑、甚至有点笨**——那是真实。

@@ -172,6 +172,8 @@ def save_life(person: Person, world: WorldState | None, relations: list[Relation
         "structure": list(getattr(person, "structure_log", []) or []),
         "meeting_date": getattr(person, "meeting_date", "") or "",
         "meeting_age": int(getattr(person, "meeting_age", 0) or 0),
+        # ── 相遇背景（你们怎么认识的——她记得；持久化，不再重新生成）──
+        "meeting_story": dict(getattr(person, "meeting_story", {}) or {}),
     }
     (d / "life.json").write_text(
         json.dumps(life_data, ensure_ascii=False, indent=2), encoding="utf-8")

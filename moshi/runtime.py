@@ -107,6 +107,15 @@ class Session:
         self.last_life_day = int((life.get("life") or {}).get("last_life_day",
                                                               timeline.life_day_of(self.birth_date)))
 
+        # ── 相遇背景（网友：从她的人生里长出来的"你们怎么认识的"；她记得，不是陌生人）──
+        from .v4.meeting import generate_meeting_story
+        lifed = life.get("life") or {}
+        self.she.meeting_story = lifed.get("meeting_story") or {}
+        if not self.she.meeting_story and self.she.facts is not None:
+            self.she.meeting_story = generate_meeting_story(seed, self.she.facts)
+        if self.she.meeting_story:
+            self.she.trust = max(self.she.trust, 0.50)   # 信任基准：认识一段时间了（不是陌生人）
+
         # 离线补日子（她不在对话里时也在过日子）
         self._advance_if_needed()
 

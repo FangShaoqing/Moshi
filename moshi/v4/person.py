@@ -58,6 +58,8 @@ class Person:
     # ── ① 你们的故事（长期记忆沉淀：重要时刻 → 压缩成"她记得的几年"）──
     chronicle: list = field(default_factory=list)      # [{"date","kind","text"}]（重要时刻）
     chronicle_old: str = ""               # 更早的点滴（太多了记不细——真实的淡忘）
+    # ── 相遇背景（网友：从她人生里长出来的"你们怎么认识的"；她记得，不是陌生人）──
+    meeting_story: dict = field(default_factory=dict)   # {scene,place,duration,narrative,...}
 
     def relation_context(self) -> str:
         """她世界里的人（供 LLM：她提起他们有厚度——具体/带温度/有依据）。
@@ -334,11 +336,15 @@ class Person:
 
     # ── 关系阶段推导 ──
     def relationship_stage(self) -> str:
-        """由相处累积推导当前关系阶段（长期陪伴：她随关系成长）。"""
-        # 分数：相处次数 + 深谈×2 + 特殊记忆×3
+        """由相处累积推导当前关系阶段（长期陪伴：她随关系成长）。
+
+        相遇基线：有相遇背景（你们是网友，认识了一段时间）→ +12（起点=熟悉，不是初识）。
+        """
         score = (self.interaction_count * 1.0
                  + self.deep_talks * 2.0
                  + len(self.special_moments) * 3.0)
+        if getattr(self, "meeting_story", None):
+            score += 12.0          # 相遇基线：她认识你（网上的日子也算数）
         if score >= 60:
             return "深入"
         if score >= 30:
