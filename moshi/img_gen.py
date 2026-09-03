@@ -15,8 +15,6 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
 MODEL_DIR = _ROOT / "tmp_cosy" / "models" / "dreamshaper-8"              # SD1.5（备选，目录形态）
-SDXL_DIR = _ROOT / "tmp_cosy" / "models" / "RealVisXL_V4.0"             # SDXL（画质慢路线，备用）
-RV51_FILE = next(_ROOT.glob("tmp_cosy/cache_rv51/**/Realistic_Vision_V5.1.safetensors"), None)
 MJ_FILE = next(_ROOT.glob("tmp_cosy/models/majicMIX_realistic_v7/majicmixRealistic_v7.safetensors"), None)
 PHOTO_DIR = _ROOT / "data" / "photo_cache"
 STATIC_DIR = _ROOT / "data" / "static"
