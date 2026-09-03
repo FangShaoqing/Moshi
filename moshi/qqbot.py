@@ -31,6 +31,7 @@ from botpy.message import C2CMessage, GroupMessage
 
 from .runtime import Session
 from . import voice as voice_mod
+from . import photo as photo_mod
 
 _CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "secrets.json"
 
@@ -39,13 +40,19 @@ _MENTION_RE = re.compile(r"<@!?\d+(?:\.\d+)?>")
 
 
 class _VoiceHandler(SimpleHTTPRequestHandler):
-    """语音文件服务：把 /voice/<file> 映射到 CACHE_DIR/<file>（QQ 端拉取路径与本地目录解耦）。"""
+    """静态文件服务：/voice/<file> → 语音缓存；/photo/<file> → 照片缓存。"""
 
     def translate_path(self, path: str) -> str:
         path = (path or "").split("?", 1)[0]
         if path.startswith("/voice/"):
             path = path[len("/voice/"):]           # /voice/x.silk → /x.silk
-        return super().translate_path("/" + path)
+            return super().translate_path("/" + path)
+        if path.startswith("/photo/"):
+            name = path[len("/photo/"):]
+            photo_dir = photo_mod.img_gen.PHOTO_DIR
+            photo_dir.mkdir(parents=True, exist_ok=True)
+            return str(photo_dir / name)
+        return super().translate_path(path)
 
 
 # 对方明确要她"说话"（语音请求）：直接发语音，不走"她选"的决策
@@ -208,13 +215,19 @@ class MoshiQQ(botpy.Client):
                 raise
         raise last_err or RuntimeError("语音发送失败")
 
-    # ── 主动：她会突然想起你（低频；经官方接口私聊推送）──
+    # ── 主动：她会突然想起你（低频；发什么由她的心情定：照片 / 语音 / 文字）──
     async def _tick_loop(self) -> None:
         while True:
             await asyncio.sleep(self.tick_minutes * 60)
             try:
+                if not self.last_openid:
+                    continue
+                # 她今天想给你看她的世界？（照片 = 她日子的呈现；想发才发）
+                sent = await self._try_photo_push()
+                if sent:
+                    continue
                 text = await asyncio.to_thread(self.session.tick)
-                if text and self.last_openid:
+                if text:
                     if self.voice and voice_mod.decide_voice(self.session.she, "chat",
                                                              text, turn_kind="touch"):
                         last_err = None
@@ -241,6 +254,22 @@ class MoshiQQ(botpy.Client):
                         print(f"[qqbot] 她想你了：{text[:40]}…")
             except Exception as e:
                 print(f"[qqbot] tick 失败：{e}")
+
+    async def _try_photo_push(self) -> bool:
+        """她想发照片？→ 发（file_type=1 图片）；返回是否发了。"""
+        try:
+            out = await asyncio.to_thread(photo_mod.make_photo, self.session.she)
+        except Exception as e:
+            print(f"[qqbot] 照片生成异常：{e}")
+            return False
+        if not out:
+            return False
+        path, dec = out
+        url = f"{self.voice_url_base}/photo/{path.name}"
+        await self.api.post_c2c_file(openid=self.last_openid, file_type=1,
+                                     url=url, srv_send_msg=True)
+        print(f"[qqbot] 她发来一张照片（{dec['scene']}）")
+        return True
 
 
 def main() -> None:
