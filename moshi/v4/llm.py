@@ -200,6 +200,7 @@ def _build_prompt(person: Any, user_input: str, intent: str,
         pass
 
     # ⑥ 知识层·本地部分：她"知道今天是什么日子"（日期/节气/时令）+ 今天天气（有 key 才显示）
+    #    + 新闻（克制：她可能知道也可能不在意——不是播报机器）
     knowledge_ctx = ""
     try:
         from ..knowledge import today_note
@@ -214,6 +215,15 @@ def _build_prompt(person: Any, user_input: str, intent: str,
             pass
         knowledge_ctx = (f"（今天：{note}——这是你生活的世界的时间底色，"
                          f"可以自然提到，也可以不提）\n")
+        try:
+            from ..news import news_note
+            n = news_note()
+            if n:
+                knowledge_ctx += (f"（{n}——你可能知道，也可能不在意；"
+                                  f"你**不会主动播报**新闻，只有在跟你自己有关/你本来就想说时才提一句，"
+                                  f"而且说的是你自己的看法，不是念新闻。\n")
+        except Exception:
+            pass
     except Exception:
         pass
 
