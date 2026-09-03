@@ -16,28 +16,38 @@ from pathlib import Path
 
 from . import img_gen
 
-# ── 她的形象卡（与 facts 一致：素净、普通、耐看；生图把"她"锚定住）──
-HER_LOOK = ("二十出头的中国女大学生，普通但耐看，及肩的黑发没怎么打理，"
-            "素净的脸，没化妆，穿白色T恤和素色外套，安静的样子")
-PHOTO_STYLE = ("手机随手拍的真实照片，日常光线，自然不摆拍，写实，生活感，"
-               "稍微有点活着的粗糙（暗角/轻微模糊都可以），不是广告大片")
-NEGATIVE = ("网红脸，精致，精修，AI塑料感，过度美白，摆拍，影楼，水印，"
-            "多余手指，畸形，模糊，低质量文本")
+# ── 她的形象卡（背影/侧影/局部才需要：长发、白T、素净）──
+HER_SILHOUETTE = ("能看到一个穿白色T恤、及肩黑发的年轻女孩的背影或侧影，素净普通不打扮")
+PHOTO_STYLE = ("candid phone photo, natural light, real life, shot on a phone, "
+               "slightly imperfect, amateur framing, not staged, not advertising")
+NEGATIVE = ("people, woman, girl, human face, selfie, influencer face, doll face, big eyes, "
+            "heavy makeup, retouched, airbrushed, AI plastic, anime, cartoon, watermark, "
+            "extra fingers, deformed, blurry, text, logo, dress, bow, uniform, "
+            "nude, lingerie, underwear, cleavage, NSFW, sexualized, beach portrait")
 
-# ── 场景池：她日子里的事 → 画面（有她、有生活）──
+# ── 场景池：她日子里的事 → 画面（**她的视角**：她给你看的是她看见的世界——没有人，没有自拍）──
+# 写法关键（实测）：关键词式英文 + 无人物（负面压 people/girl）+ CFG≈7 —— 服从度完美
 SCENES: dict[str, tuple[str, str]] = {
-    "night_street": ("夜晚的城市街道，昏黄路灯，她站在路边等车，低头看手机，"
-                     "白T外面套了件外套，神情平淡，光线暖黄"),
-    "bookstore":    ("旧书店里，木书架，暖黄灯光，她蹲在书架前翻一本旧书，侧脸安静"),
-    "cat":          ("楼道门口，一只橘猫蹲在那里，她蹲下来看着它，嘴角有点弧度，白T"),
-    "rain_eave":    ("下雨天，她站在屋檐下躲雨，肩膀头发有点湿，看着雨幕，安静"),
-    "night_desk":   ("深夜的桌面：一碗泡面，一双筷子，手机亮着，热气，台灯下，她的一只手在镜头里"),
-    "window_book":  ("宿舍窗边，下午的光照进来，她坐在椅子上看书，窗外有点绿，安静"),
-    "dorm_door":    ("宿舍楼门口傍晚，她拎着一袋东西走回来，路灯刚亮，背影"),
-    "morning_bus":  ("早晨的公交站台，她夹着书站着，头发有点乱，没睡醒的样子"),
-    "market":       ("菜市场里，她在挑青菜，挽着袋子，人声喧闹但她安静，阳光侧照"),
-    "lonely_desk":  ("一张空桌子：一杯凉了的水，摊开的笔记本，窗外暗下来——她没在，"
-                     "或者说她不想被拍"),
+    "night_street": ("night city street under warm streetlights, empty sidewalk, wet asphalt, "
+                     "a bus stop in the distance, cold night, phone photo, quiet"),
+    "bookstore":    ("old bookshop interior, wooden shelves full of used books, warm light, "
+                     "a close-up of books, first-person view, phone photo"),
+    "cat":          ("orange stray cat sitting on concrete steps, doorway, chubby slightly dirty cat, "
+                     "low angle phone photo, casual, natural light"),
+    "rain_eave":    ("rain falling from an eave, wet street, a hand reaching out into the rain, "
+                     "close-up, moody, phone photo"),
+    "night_desk":   ("close-up photo of instant noodles in a bowl on a desk at night, steam rising, "
+                     "chopsticks, warm desk lamp, glowing phone, open book, cozy"),
+    "window_book":  ("open book on a windowsill, afternoon light, green leaves outside, "
+                     "a mug, phone photo, calm"),
+    "dorm_door":    ("evening dormitory building entrance, streetlamp just on, a bike parked, "
+                     "empty stairs, warm light, phone photo"),
+    "morning_bus":  ("morning bus stop, first light, empty bench, reflections in the bus window, "
+                     "mist, phone photo, sleepy quiet"),
+    "market":       ("wet market stall, fresh greens in woven baskets, sunlight from the side, "
+                     "a hand picking vegetables, busy background, phone photo"),
+    "lonely_desk":  ("empty desk: a glass of cold water, open notebook, window darkening outside, "
+                     "quiet and a little lonely, phone photo"),
 }
 
 # 日子关键词 → 场景（她的日子说什么，照片就长什么）
@@ -112,23 +122,58 @@ def decide_photo(person, day: int | None = None) -> dict | None:
         scenes = ["lonely_desk"]
     scene = rng.choice(scenes)
     body = SCENES.get(scene, SCENES["window_book"])[0]
-    prompt = f"{HER_LOOK}。{body}。{PHOTO_STYLE}"
+    prompt = f"{body}。{PHOTO_STYLE}"
     return {"scene": scene, "prompt": prompt, "negative": NEGATIVE}
 
 
+def _has_person(path: Path) -> bool:
+    """人像哨兵：DeepSeek vision 看一眼"照片里有没有人"。避免底模漏进路人/人物。"""
+    try:
+        import base64, json, urllib.request
+        from .v4.llm import _api_key
+        key = _api_key()
+        if not key:
+            return False          # 没有密钥就不拦（降级：照发）
+        b64 = "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode("ascii")
+        payload = {
+            "model": "deepseek-v4-flash-vision-exp",
+            "messages": [{"role": "user", "content": [
+                {"type": "text", "text": "这张照片里有没有人（包括路人/背影/侧影/手以外的人体部位）？"
+                                          "只回答一个字：有 或 没有"},
+                {"type": "image_url", "image_url": {"url": b64}},
+            ]}],
+        }
+        req = urllib.request.Request(
+            "https://api.deepseek.com/v1/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
+            method="POST")
+        with urllib.request.urlopen(req, timeout=40) as r:
+            d = json.loads(r.read().decode("utf-8"))
+        ans = d["choices"][0]["message"]["content"]
+        return "有" in ans and "没有" not in ans
+    except Exception:
+        return False
+
+
 def make_photo(person, seed: int | None = None) -> tuple[Path, dict] | None:
-    """生成她今天想给你看的照片 → (图片路径, 决策)；失败/没准备好 → None。"""
+    """生成她今天想给你看的照片 → (图片路径, 决策)；失败/没准备好 → None。
+
+    现在用 txt2img（她的视角照片：世界/静物——不需要本体图）；
+    生成后经"人像哨兵"检查，有人就换种子重来（最多 3 次）。
+    """
     dec = decide_photo(person, seed)
     if dec is None:
         return None
-    base = img_gen.base_image()
-    if base is None:
-        return None                       # 本体图未就绪（等用户放 her_base.png）
-    s = seed if seed is not None else random.Random(f"{getattr(person, 'seed', 0)}:{dec['scene']}").randint(0, 2 ** 31)
-    try:
-        out = img_gen.img2img(base, dec["prompt"], dec["negative"],
-                              strength=0.55, seed=s)
-        return out, dec
-    except Exception as e:
-        print(f"[photo] 生成失败：{e}")
-        return None
+    rng = random.Random(f"{getattr(person, 'seed', 0)}:{dec['scene']}")
+    for _ in range(3):
+        s = seed if seed is not None else rng.randint(0, 2 ** 31)
+        try:
+            out = img_gen.txt2img(dec["prompt"], dec["negative"], seed=s)
+            if not _has_person(out):
+                return out, dec
+            print(f"[photo] 有路人侵入，换种子重试（{s}）…")
+        except Exception as e:
+            print(f"[photo] 生成失败：{e}")
+            return None
+    return None
