@@ -17,6 +17,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 MODEL_DIR = _ROOT / "tmp_cosy" / "models" / "dreamshaper-8"              # SD1.5（备选，目录形态）
 SDXL_DIR = _ROOT / "tmp_cosy" / "models" / "RealVisXL_V4.0"             # SDXL（画质慢路线，备用）
 RV51_FILE = next(_ROOT.glob("tmp_cosy/cache_rv51/**/Realistic_Vision_V5.1.safetensors"), None)
+MJ_FILE = next(_ROOT.glob("tmp_cosy/models/majicMIX_realistic_v7/majicmixRealistic_v7.safetensors"), None)
 PHOTO_DIR = _ROOT / "data" / "photo_cache"
 STATIC_DIR = _ROOT / "data" / "static"
 
@@ -33,30 +34,27 @@ def _get_pipe():
     if _pipe is not None:
         return _pipe
     if not available():
-        raise RuntimeError("本地生图模型未就绪（dreamshaper-8）——请先完成下载")
+        raise RuntimeError("本地生图模型未就绪（majicMIX/dreamshaper）——请先完成下载")
     import torch
     from diffusers import StableDiffusionPipeline
     print("[img_gen] 加载 SD1.5 写实模型（首次较慢）…", flush=True)
     t0 = time.time()
-    if RV51_FILE is not None:
-        # RV51 先不用于她（其微调语料偏 NSFW，对"猫/日常"类提示词偶尔严重跑偏）
-        pass
-    import torch
-    from diffusers import StableDiffusionPipeline
-    print("[img_gen] 加载 SD1.5 写实模型（首次较慢）…", flush=True)
-    t0 = time.time()
-    pipe = StableDiffusionPipeline.from_pretrained(
-        str(MODEL_DIR), torch_dtype=torch.float16, variant="fp16",
-        use_safetensors=True, local_files_only=True,
-        safety_checker=None)      # diffusers 的 NSFW 粗筛对写实人像极易误判（黑图）；关掉（图仅自用）
-    MODEL_REV = MODEL_DIR.name    # 缓存键用到（换模型=新图，不串缓存）
+    if MJ_FILE is not None:
+        # 首选：majicMIX realistic v7（更写实；单文件含 VAE；实测无 NSFW 跑偏）
+        pipe = StableDiffusionPipeline.from_single_file(
+            str(MJ_FILE), torch_dtype=torch.float16, safety_checker=None)
+    else:
+        pipe = StableDiffusionPipeline.from_pretrained(
+            str(MODEL_DIR), torch_dtype=torch.float16, variant="fp16",
+            use_safetensors=True, local_files_only=True,
+            safety_checker=None)      # diffusers 的 NSFW 粗筛对写实人像极易误判（黑图）；关掉（图仅自用）
     if torch.cuda.is_available():
         pipe = pipe.to("cuda")            # 4GB：fp16 整卡装得下（~3.4GB）；必须显式搬 GPU
     pipe.enable_attention_slicing()
     pipe.enable_vae_slicing()
     _pipe = pipe
     global _MODEL_REV
-    _MODEL_REV = MODEL_DIR.name
+    _MODEL_REV = "majicMIX_v7" if MJ_FILE is not None else MODEL_DIR.name
     print(f"[img_gen] 模型就绪（{time.time() - t0:.0f}s）", flush=True)
     return _pipe
 

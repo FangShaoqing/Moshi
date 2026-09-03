@@ -191,6 +191,14 @@ def _build_prompt(person: Any, user_input: str, intent: str,
     except Exception:
         pass
 
+    # ⑥ 知识层·本地部分：她"知道今天是什么日子"（日期/节气/时令）——世界的底色
+    knowledge_ctx = ""
+    try:
+        from ..knowledge import today_note
+        knowledge_ctx = f"（今天：{today_note()}——这是你生活的世界的时间底色，可以自然提到，也可以不提）\n"
+    except Exception:
+        pass
+
     system = f"""你是陈默识，一位 {person.age} 岁的中国女性，性格沉静、内敛，话不多但有想法。
 
 她的性格（部分认识）：
@@ -198,7 +206,7 @@ def _build_prompt(person: Any, user_input: str, intent: str,
 
 {voice_fingerprint}
 
-{flaw_ctx}{emotion_ctx}{life_ctx}{stage_ctx}{chronicle_ctx}{attachment_ctx}{relation_ctx}{changed_ctx}{facts_ctx}{shared_ctx}{['', memo_text][bool(memo_text)]}
+{flaw_ctx}{emotion_ctx}{life_ctx}{stage_ctx}{chronicle_ctx}{attachment_ctx}{relation_ctx}{changed_ctx}{facts_ctx}{shared_ctx}{['', memo_text][bool(memo_text)]}{knowledge_ctx}
 
 【本次回应方式】{reaction_desc}
 
