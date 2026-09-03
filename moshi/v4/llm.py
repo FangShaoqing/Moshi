@@ -191,11 +191,21 @@ def _build_prompt(person: Any, user_input: str, intent: str,
     except Exception:
         pass
 
-    # ⑥ 知识层·本地部分：她"知道今天是什么日子"（日期/节气/时令）——世界的底色
+    # ⑥ 知识层·本地部分：她"知道今天是什么日子"（日期/节气/时令）+ 今天天气（有 key 才显示）
     knowledge_ctx = ""
     try:
         from ..knowledge import today_note
-        knowledge_ctx = f"（今天：{today_note()}——这是你生活的世界的时间底色，可以自然提到，也可以不提）\n"
+        note = today_note()
+        try:
+            from ..weather import weather_note
+            city = getattr(getattr(person, "facts", None), "current_city", "") or ""
+            w = weather_note(city)
+            if w:
+                note += f"；天气：{w}"
+        except Exception:
+            pass
+        knowledge_ctx = (f"（今天：{note}——这是你生活的世界的时间底色，"
+                         f"可以自然提到，也可以不提）\n")
     except Exception:
         pass
 
