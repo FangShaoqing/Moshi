@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import datetime
+import gzip
 import json
 import os
 import time
@@ -23,7 +24,26 @@ _ROOT = Path(__file__).resolve().parents[1]
 _KEY_FILE = _ROOT / "config" / "secrets.json"
 _CACHE_FILE = _ROOT / "data" / "weather_cache.json"
 
-_URL = "https://devapi.qweather.com"
+_URL = "https://devapi.qweather.com"      # 默认；实际以项目专属 Host 为准（QWEATHER_HOST）
+
+
+def qweather_host() -> str:
+    """项目专属 API Host（新版和风强制：`xxxx.re.qweatherapi.com`；通用 devapi 一律 403）。"""
+    env = os.environ.get("QWEATHER_HOST", "").strip()
+    if env:
+        return env
+    try:
+        if _KEY_FILE.exists():
+            v = (json.loads(_KEY_FILE.read_text(encoding="utf-8")).get("QWEATHER_HOST") or "").strip()
+            if v:
+                return v
+    except Exception:
+        pass
+    return "devapi.qweather.com"
+
+
+def _base() -> str:
+    return "https://" + qweather_host()
 
 
 def qweather_key() -> str:
@@ -44,7 +64,12 @@ def _get(url: str, timeout: int = 15) -> dict | None:
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "moshi/selfuse"})
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            d = json.loads(r.read().decode("utf-8"))
+            raw = r.read()
+            try:
+                raw = gzip.decompress(raw)      # 和风有时按 gzip 返回
+            except Exception:
+                pass
+            d = json.loads(raw.decode("utf-8"))
             if d.get("code") == "200":
                 return d
     except Exception:
@@ -76,7 +101,7 @@ def _city_id(city: str) -> str | None:
     key = qweather_key()
     if not key:
         return None
-    d = _get(f"{_URL}/geo/v2/city/lookup?location={urllib.parse.quote(city)}&key={key}")
+    d = _get(f"{_base()}/geo/v2/city/lookup?location={urllib.parse.quote(city)}&key={key}")
     if not d:
         return None
     loc = (d.get("location") or [{}])[0]
@@ -99,7 +124,7 @@ def now_weather(city: str) -> dict | None:
     hit = cache.get(cid, {})
     if hit.get("t") and time.time() - hit["t"] < 30 * 60:
         return hit["data"]
-    d = _get(f"{_URL}/v7/weather/now?location={cid}&key={key}")
+    d = _get(f"{_base()}/v7/weather/now?location={cid}&key={key}")
     if not d:
         return None
     now = (d.get("now") or {})
@@ -112,7 +137,7 @@ def now_weather(city: str) -> dict | None:
         "umbrella": "",
     }
     # 生活指数（穿衣/雨伞；1 天预报）
-    ind = _get(f"{_URL}/v7/indices/1d?type=3,9&location={cid}&key={key}")
+    ind = _get(f"{_base()}/v7/indices/1d?type=3,9&location={cid}&key={key}")
     if ind:
         for item in (ind.get("daily") or []):
             if item.get("type") == "3":

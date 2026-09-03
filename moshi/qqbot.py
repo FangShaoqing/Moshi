@@ -256,7 +256,7 @@ class MoshiQQ(botpy.Client):
                 print(f"[qqbot] tick 失败：{e}")
 
     async def _try_photo_push(self) -> bool:
-        """她想发照片？→ 发（file_type=1 图片）；返回是否发了。"""
+        """她想发照片？→ 发（file_type=1 图片，30% 概率配一句极短的）；返回是否发了。"""
         try:
             out = await asyncio.to_thread(photo_mod.make_photo, self.session.she)
         except Exception as e:
@@ -269,6 +269,17 @@ class MoshiQQ(botpy.Client):
         await self.api.post_c2c_file(openid=self.last_openid, file_type=1,
                                      url=url, srv_send_msg=True)
         print(f"[qqbot] 她发来一张照片（{dec['scene']}）")
+        # 她话少：偶尔（30%）配一句极短的
+        if random.random() < 0.3:
+            caption = random.choice([
+                "……给你看看。", "今天这个。", "还行吧，随手拍的。",
+                "不知道给你看啥，就这个。", "……嗯，就这样。",
+            ])
+            try:
+                await self.api.post_c2c_message(openid=self.last_openid,
+                                                msg_type=0, content=caption)
+            except Exception:
+                pass
         return True
 
 
