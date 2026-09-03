@@ -397,7 +397,14 @@ class Person:
             tone = "日子平平淡淡的，没什么特别的，也说不上好或坏"
         recent = getattr(self, "life_recent", "") or ""
         recent_note = f"她最近：{recent}。" if recent else ""
-        return (f"（她的话里带着她的日子：{tone}。{recent_note}"
+        # 世界的季节底色（节气/节日——她活在时间里）
+        season_note = ""
+        try:
+            from ..knowledge import today_note
+            season_note = f"（{today_note()}）"
+        except Exception:
+            pass
+        return (f"（她的话里带着她的日子：{tone}。{recent_note}{season_note}"
                 f"你不在的时候，她也在上课/工作、吃饭、睡不好或发着呆——她有自己的生活。）")
 
     # ── 种子绑定：换种子 → 重置她的"对你记忆/状态/信任" ──

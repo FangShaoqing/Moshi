@@ -106,10 +106,63 @@ def season_feel(term: str) -> str:
     return table.get(term, "")
 
 
+# ── 节日（农历为主：她是一个会过节的女孩；农历用 lunardate，缺失则只认公历节日）──
+_LUNAR_FESTIVALS: dict[tuple[int, int], str] = {
+    (1, 1): "春节", (1, 15): "元宵", (5, 5): "端午",
+    (7, 7): "七夕", (8, 15): "中秋", (9, 9): "重阳",
+}
+_SOLAR_FESTIVALS: dict[tuple[int, int], str] = {
+    (1, 1): "元旦", (3, 8): "妇女节", (5, 1): "劳动节", (10, 1): "国庆节",
+}
+FESTIVAL_FEEL: dict[str, str] = {
+    "元旦": "新的一年的头一天，街上还没什么年味",
+    "春节": "过年了，到处是鞭炮声和春联（她一个人在成都）",
+    "元宵": "正月十五，圆圆的月亮，汤圆（她不爱吃甜的）",
+    "妇女节": "妇女节，她没觉得自己算'妇女'，但那天学校发过东西",
+    "劳动节": "劳动节，她只想睡个好觉",
+    "端午": "端午，粽子（她更喜欢咸的）",
+    "七夕": "七夕，街上都是情侣，她绕路走了",
+    "中秋": "中秋，月亮很圆（她本来该给家里打个电话）",
+    "国庆": "国庆，去哪都是人，她待在宿舍看书",
+    "重阳": "重阳，秋天最稳的一天",
+}
+
+
+def festival_of(d: datetime.date | None = None) -> str:
+    """今天是什么（农历/公历）日子？不是节日返回 ''. """
+    d = d or datetime.date.today()
+    name = _SOLAR_FESTIVALS.get((d.month, d.day), "")
+    if name:
+        return name
+    try:
+        from lunardate import LunarDate
+        ld = LunarDate.from_solar_date(d.year, d.month, d.day)
+        if (ld.month, ld.day) == (12, 29) or (ld.month, ld.day) == (12, 30):
+            # 腊月廿九/三十：查明天是否正月初一（是则除夕）
+            try:
+                tomorrow = d + datetime.timedelta(days=1)
+                nt = LunarDate.from_solar_date(tomorrow.year, tomorrow.month, tomorrow.day)
+                if (nt.month, nt.day) == (1, 1):
+                    return "除夕"
+            except Exception:
+                pass
+        name = _LUNAR_FESTIVALS.get((ld.month, ld.day), "")
+        if name:
+            return name
+    except Exception:
+        pass
+    return ""
+
+
 def today_note(d: datetime.date | None = None) -> str:
-    """一句话的知识底色（提示词引用）：'9月8日 星期三，白露——露珠白了，早晚凉了，该添衣服了'。"""
+    """一句话的知识底色（提示词引用）：'9月8日 星期三，白露——露珠白了，早晚凉了'。
+    节日时追加：'；今天是中秋——月亮很圆'。"""
     info = today_info(d)
     feel = season_feel(info["solar_term"])
     m, day = info["date"][5:].split("-")
     prefix = f"{int(m)}月{int(day)}日 {info['weekday']}，{info['solar_term']}"
-    return f"{prefix}——{feel}" if feel else prefix
+    base = f"{prefix}——{feel}" if feel else prefix
+    fest = festival_of(d)
+    if fest:
+        base += f"；今天是{fest}（{FESTIVAL_FEEL.get(fest, '')}）"
+    return base

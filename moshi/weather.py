@@ -140,10 +140,11 @@ def now_weather(city: str) -> dict | None:
     ind = _get(f"{_base()}/v7/indices/1d?type=3,9&location={cid}&key={key}")
     if ind:
         for item in (ind.get("daily") or []):
+            t = item.get("text", "") or ""
             if item.get("type") == "3":
-                data["dressing"] = (item.get("text", "").split("，") or [""])[0]
-            elif item.get("type") == "9":
-                data["umbrella"] = (item.get("text", "").split("，") or [""])[0]
+                data["dressing"] = (t.split("，") or [""])[0].strip()   # 只要是"穿衣感觉"的首句
+            elif item.get("type") == "9" and any(k in t for k in ("雨", "伞", "降水")):
+                data["umbrella"] = (t.split("，") or [""])[0].strip()   # 只有真下雨才提伞
     cache[cid] = {"t": time.time(), "data": data}
     _save_cache(_cache() | {"w": cache})
     return data
