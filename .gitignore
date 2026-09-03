@@ -1,28 +1,32 @@
-# ── 密钥与隐私（绝不提交）──
+﻿# 鈹€鈹€ 瀵嗛挜涓庨殣绉侊紙缁濅笉鎻愪氦锛夆攢鈹€
 config/secrets.json
 
-# ── 她的数据（含对你的记忆；一个种子一个宇宙）──
+# 鈹€鈹€ 濂圭殑鏁版嵁锛堝惈瀵逛綘鐨勮蹇嗭紱涓€涓瀛愪竴涓畤瀹欙級鈹€鈹€
 data/
 
-# ── Python ──
+# 鈹€鈹€ Python 鈹€鈹€
 __pycache__/
 *.py[cod]
 .venv/
 venv/
 *.egg-info/
 
-# ── 工具/日志 ──
+# 鈹€鈹€ 宸ュ叿/鏃ュ織 鈹€鈹€
 .idea/
 .vscode/
 *.log
 tmp_test_*.py
 tmp_photo_*.py
+tmp_news_dbg.py
+tmp_cat_probe.py
+tmp_weather_dbg.py
 
-# ── 本地 TTS 工程（CosyVoice 克隆 + 权重，几 GB，不入库）──
+# 鈹€鈹€ 鏈湴 TTS 宸ョ▼锛圕osyVoice 鍏嬮殕 + 鏉冮噸锛屽嚑 GB锛屼笉鍏ュ簱锛夆攢鈹€
 tmp_cosy/
 .venv-cosy/
 tmp_cosy_probe*.py
 tmp_req*.txt
 
-# ── 穿透工具（下载即用，不入库；silk_encoder.exe 是项目资产，保留）──
+# 鈹€鈹€ 绌块€忓伐鍏凤紙涓嬭浇鍗崇敤锛屼笉鍏ュ簱锛泂ilk_encoder.exe 鏄」鐩祫浜э紝淇濈暀锛夆攢鈹€
 tools/cloudflared.exe
+
