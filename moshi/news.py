@@ -65,7 +65,7 @@ _DOMAIN_RULES: list[tuple[tuple[str, ...], str]] = [
     # （触发词（事实里的专业/职业/兴趣），领域）
     (("软件工程", "程序", "IT", "计算机", "互联网", "运营", "新媒体"), "tech"),
     (("学前", "教育", "师范", "护理", "健康", "医学"), "edu"),
-    (("护理", "医护", "药学"), "medical"),
+    (("护", "医护", "药学", "医院", "卫生"), "medical"),
     (("汉语言", "新闻传播", "编辑", "文案", "文学", "设计", "平面", "书店", "写"), "culture"),
     (("会计", "财务", "金融", "营销", "市场", "行政", "电商"), "finance"),
 ]
@@ -88,9 +88,11 @@ def her_domains(facts) -> tuple[str, ...]:
 
 
 def _score(title: str, domains: tuple[str, ...]) -> int:
-    """和她的关系分：领域词 +2，社会民生 +1。"""
+    """和她的关系分：领域词 +2，社会民生 +1（社会民生是通用通道，不作为领域重复计分）。"""
     s = 0
     for d in domains:
+        if d == "society":
+            continue                        # 通用通道，下面统一 +1
         if any(k in title for k in DOMAIN_KEYWORDS.get(d, ())):
             s += 2
     if any(k in title for k in DOMAIN_KEYWORDS["society"]):
