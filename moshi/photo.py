@@ -169,7 +169,9 @@ def make_photo(person, seed: int | None = None) -> tuple[Path, dict] | None:
     for _ in range(3):
         s = seed if seed is not None else rng.randint(0, 2 ** 31)
         try:
-            out = img_gen.txt2img(dec["prompt"], dec["negative"], seed=s)
+            # 配方（压力测试 10/10 稳定验证）：英文关键词 + still life + CFG7 + 无人物负面
+            prompt = dec["prompt"] + ", still life"
+            out = img_gen.txt2img(prompt, dec["negative"], seed=s)
             if not _has_person(out):
                 return out, dec
             print(f"[photo] 有路人侵入，换种子重试（{s}）…")
