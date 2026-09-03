@@ -217,7 +217,7 @@ def _build_prompt(person: Any, user_input: str, intent: str,
                          f"可以自然提到，也可以不提）\n")
         try:
             from ..news import news_note
-            n = news_note(getattr(person, "facts", None))
+            n = news_note(getattr(person, "facts", None), person=person)
             if n:
                 knowledge_ctx += (f"（{n}——你可能知道，也可能不在意；"
                                   f"你**不会主动播报**新闻，只有在跟你自己有关/你本来就想说时才提一句，"

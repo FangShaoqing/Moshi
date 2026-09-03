@@ -156,15 +156,80 @@ def _pool() -> list[dict]:
     return items
 
 
-def today_news(facts=None) -> list[dict]:
-    """她可能留意的新闻（2 条：最高分的民生/领域各一条；与她的世界相关优先）。"""
+def news_interest(person) -> float:
+    """她对新闻的关心程度（0~1）——**从她的人格里长出来**，不是写死。
+
+    信号（确定性，种子派生）：
+    - 职业/专业（做媒体的她天然关注）；兴趣（文化/书/画的她偏文化）；
+    - 信任底色（"怕再一次错付"的她对世界保持距离 → 少看）；
+    - 缺点（会为以后焦虑 → 多瞄两眼就业/民生；心里有事不说 → 更少看）；
+    - 心情（日子紧/倦怠 → 当天不想看，由 _want_news 处理）。
+    """
+    base = 0.30                                   # 一般人的底子：有一搭没一搭地看
+    facts = getattr(person, "facts", None)
+    if facts is not None:
+        text = " ".join([
+            getattr(facts, "major", "") or "",
+            getattr(facts, "job", "") or "",
+            " ".join(getattr(facts, "interests", ()) or ()),
+        ])
+        if any(t in text for t in ("新闻传播", "记者", "媒体", "编辑", "新媒体")):
+            base = 0.75                           # 媒体人：她的工作就是看新闻
+        elif any(t in text for t in ("汉语言", "文学", "书店", "写", "设计", "平面", "文化")):
+            base = 0.45
+        elif any(t in text for t in ("软件", "计算机", "运营", "电商", "科技")):
+            base = 0.40
+        elif any(t in text for t in ("会计", "财务", "行政", "营销", "护理", "教育")):
+            base = 0.35
+    # 信任底色：对外界留一手 → 少看（她不是好凑热闹的人）
+    for b in getattr(person, "beliefs", []) or []:
+        t = getattr(b, "tendency", "") or ""
+        if any(k in t for k in ("留一手", "怕再一次", "不敢", "不信")):
+            base -= 0.12
+        if any(k in t for k in ("想看看外面", "好奇")):
+            base += 0.10
+    # 缺点：为以后焦虑 → 民生/就业多看一点；心里有事不说 → 更少看
+    for fl in getattr(person, "flaws", []) or []:
+        if "焦虑" in fl or "想太多" in fl:
+            base += 0.10
+        if "不说" in fl or "藏" in fl:
+            base -= 0.05
+    return max(0.08, min(0.9, base))
+
+
+def _want_news(person, day: int) -> bool:
+    """今天她看新闻吗？——兴趣 × 心情，按"每天"掷一次（确定性）。"""
+    i = news_interest(person)
+    mood = getattr(person, "life_mood", "") or ""
+    if any(k in mood for k in ("烦", "累", "提不起劲")):
+        i *= 0.6                                  # 日子紧：连新闻都不想打开
+    if getattr(person, "exhausted", False):
+        return False                              # 倦怠：不看
+    import random as _random
+    rng = _random.Random(f"{getattr(person, 'seed', 0)}:news:{day}")
+    return rng.random() < i
+
+
+def today_news(facts=None, person=None, day: int | None = None) -> list[dict]:
+    """她可能留意的新闻。person 存在时：**她想看才看**（兴趣×心情，每天一决定）——没想看的今天她不知道新闻。
+
+    返回最多 2 条（领域优先，民生补位；与她无关的不留）。
+    """
+    if person is not None:
+        try:
+            from .v4 import timeline as _tl
+            d = day if day is not None else _tl.life_day_of(getattr(person, "birth_date", None))
+            if not _want_news(person, d):
+                return []                         # 她今天没看（真实：不是所有人都看新闻）
+        except Exception:
+            pass
     domains = her_domains(facts)
     scored = sorted(((_score(it["title"], domains), it) for it in _pool()),
                     key=lambda x: -x[0])
     picked: list[dict] = []
     for sc, it in scored:
         if sc <= 0:
-            break                       # 与她无关的不留
+            break                                 # 与她无关的不留
         if not any(p["title"] == it["title"] for p in picked):
             picked.append(it)
         if len(picked) >= KEEP:
@@ -172,9 +237,9 @@ def today_news(facts=None) -> list[dict]:
     return picked[:KEEP]
 
 
-def news_note(facts=None) -> str:
-    """一句话给 LLM（克制版）：'这个世界今天发生了一些事：①… ②…'——她可能知道也可能不在意。"""
-    items = today_news(facts)
+def news_note(facts=None, person=None) -> str:
+    """一句话给 LLM（克制版）：她想看才看；今天没看就是没看（空）。"""
+    items = today_news(facts, person=person)
     if not items:
         return ""
     marks = ("①", "②")
