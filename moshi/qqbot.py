@@ -74,6 +74,28 @@ def _clean(text: str) -> str:
     return (_MENTION_RE.sub("", text or "")).strip()
 
 
+def _image_data_url(message) -> str | None:
+    """消息里的第一张图片 → data:image/jpeg;base64（她能看到）；下载失败则给原 URL 兜底。"""
+    try:
+        for a in (getattr(message, "attachments", None) or []):
+            url = getattr(a, "url", None)
+            if not url:
+                continue
+            ct = (getattr(a, "content_type", "") or "").lower()
+            fn = (getattr(a, "filename", "") or "").lower()
+            if ct.startswith("image") or fn.endswith((".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")):
+                try:
+                    import base64 as _b64
+                    import urllib.request as _ur
+                    with _ur.urlopen(url, timeout=15) as r:
+                        return "data:image/jpeg;base64," + _b64.b64encode(r.read()).decode("ascii")
+                except Exception:
+                    return url     # 兜底：DeepSeek 自己能拉
+    except Exception:
+        pass
+    return None
+
+
 class MoshiQQ(botpy.Client):
     """官方 QQBOT：消息 → Session（同一条她）→ 回复（文字或语音——她选）。"""
 
@@ -130,10 +152,11 @@ class MoshiQQ(botpy.Client):
         await self._handle(message, _clean(message.content))
 
     async def _handle(self, message, text: str) -> None:
-        if not text:
+        image_url = _image_data_url(message)          # ⑤ 她能看照片（vision）
+        if not text and not image_url:
             return
         async with self._lock:                        # 一次只处理一句（她的状态是连续的）
-            out = await asyncio.to_thread(self.session.on_message, text)
+            out = await asyncio.to_thread(self.session.on_message, text, image_url)
         reply = (out.get("reply") or "……").strip()
         await asyncio.sleep(random.uniform(0.8, 3.0))  # 真人打字节奏（消息不是秒回的）
         # ── 明确要语音 → 她直接发语音（系统发；不走"她选"，也绝不让文字冒充语音）──

@@ -125,15 +125,23 @@ class Session:
         return meta
 
     # ── 收到一句 → 她作答（完整管线：边界规则 + LLM 口吻 + 状态演化 + 持久化）──
-    def on_message(self, text: str) -> dict:
+    def on_message(self, text: str, image_url: str | None = None) -> dict:
         text = (text or "").strip()
-        if not text:
+        if not text and not image_url:
             return {"reply": "", "remembered": None, "touch": None}
+        if image_url and not text:
+            text = "（给你看一张照片）"
         meta = self._advance_if_needed()
-        reply = dialogue.generate_reply(self.she, text, history=self.history)
+        reply = dialogue.generate_reply(self.she, text, history=self.history,
+                                        image_url=image_url)
         dialogue.apply_conversation_effects(self.she, dialogue.classify(text),
                                             len(reply), text)
         remembered = remember_from_input(self.she, text)
+        if image_url:
+            try:
+                self.she.record_chronicle("special", "你给她看过一张照片（她看了）")
+            except Exception:
+                pass
         touch = dialogue.maybe_touch_on_you(self.she)
         self.history.append({"role": "user", "content": text})
         self.history.append({"role": "assistant", "content": reply})

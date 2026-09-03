@@ -49,9 +49,10 @@ def llm_available() -> bool:
 
 def _build_prompt(person: Any, user_input: str, intent: str,
                   related: list[Any], can_reveal: list[Any],
-                  disclosure: str, reaction: str, history: list[dict]) -> tuple[str, str]:
+                  disclosure: str, reaction: str, history: list[dict],
+                  image_url: str | None = None) -> tuple[str, str]:
     """构造 system + user prompt。system 描述"她是陈默识"（人格/当前情绪/能说什么/本次反应）；
-    user 是对话历史 + 用户最新输入。"""
+    user 是对话历史 + 用户最新输入（image_url 存在时以 vision 多模态传入）。"""
     # 人格（认识）→ 性格提示
     personality = "；".join(f"在「{b.domain}」上她倾向：{b.tendency}" for b in person.beliefs[:3])
     personality = personality or "她话不多"
@@ -211,24 +212,34 @@ def _build_prompt(person: Any, user_input: str, intent: str,
 - 被问到过去时，按给定允许程度回答：{allow_text}；
 - 语气自然、口语化、简短（1-3 句），像真人在聊天，不要像客服或汇报；**允许你说的不完美、没逻辑、甚至有点笨**——那是真实。
 
-（你是在和一个开始熟悉你的人对话。）"""
+（你是在和一个开始熟悉你的人对话。对方这次还给你看了一张照片——你可以认真地看它，
+就着照片说点你真正会说的话（你的好奇/一句点评/什么都不说都行）；如果照片里你看到了
+让人心疼或想到什么的东西，你可以说出来，也可以闷着不提——像平常的你那样。）"""
 
     history_lines = "\n".join(
         f"{'你' if m['role'] == 'user' else '她'}：{m['content']}" for m in history[-6:]
     ) or "（这是你们第一次对话）"
-    user_msg = f"{history_lines}\n你：{user_input}"
-    return system, user_msg
+    msg_text = f"{history_lines}\n你：{user_input}"
+    if image_url:
+        # vision：多模态内容（DeepSeek vision 模型；图片以 data/base64 或 http(s) 传入）
+        return system, [
+            {"type": "text", "text": msg_text},
+            {"type": "image_url", "image_url": {"url": image_url}},
+        ]
+    return system, msg_text
 
 
 def generate_reply_llm(person: Any, user_input: str, intent: str,
                        related: list[Any], can_reveal: list[Any],
-                       disclosure: str, reaction: str, history: list[dict]) -> str | None:
-    """调用 DeepSeek 生成回应；失败返回 None（上层降级模板）。"""
+                       disclosure: str, reaction: str, history: list[dict],
+                       image_url: str | None = None) -> str | None:
+    """调用 DeepSeek 生成回应（image_url 存在时她能看到照片）；失败返回 None（上层降级模板）。"""
     key = _api_key()
     if not key:
         return None
     system, user_msg = _build_prompt(person, user_input, intent, related,
-                                     can_reveal, disclosure, reaction, history)
+                                     can_reveal, disclosure, reaction, history,
+                                     image_url=image_url)
 
     payload: dict[str, Any] = {
         "model": MODEL,

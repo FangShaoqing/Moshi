@@ -192,7 +192,8 @@ def evaluate_disclosure(person: Person, intent: str, query: str,
 
 def generate_reply(person: Person, user_input: str,
                    history: list[dict] | None = None,
-                   llm: Callable | None = None) -> str:
+                   llm: Callable | None = None,
+                   image_url: str | None = None) -> str:
     """生成回应。流程：
     1) 意图分类；2) 披露模型算等级；3) 检索相关记忆；
     4) 若 LLM 可用 → DeepSeek 生成（边界由披露等级决定）；
@@ -213,7 +214,8 @@ def generate_reply(person: Person, user_input: str,
     if llm_call is not None:
         reply = llm_call(person=person, user_input=user_input, intent=intent,
                          related=related, can_reveal=related[:2],
-                         disclosure=level, reaction=reaction, history=history)
+                         disclosure=level, reaction=reaction, history=history,
+                         image_url=image_url)
         if reply:
             # 甲：生成后校验 —— 若与她的事实库**明确矛盾**（编造），替换为合规回应
             if _conflicts_with_facts(reply, person):
