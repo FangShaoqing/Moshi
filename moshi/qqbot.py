@@ -235,8 +235,11 @@ class MoshiQQ(botpy.Client):
                 if pool and self.voice:
                     try:
                         path, pool_text = pool
-                        silk = await asyncio.to_thread(
-                            voice_mod.mp3_to_silk_variant, path, "02header")
+                        if path.suffix == ".silk":     # 已锁定可直接发（话池零转换）
+                            silk = path
+                        else:
+                            silk = await asyncio.to_thread(
+                                voice_mod.mp3_to_silk_variant, path, "02header")
                         await self.api.post_c2c_file(
                             openid=self.last_openid, file_type=3,
                             url=f"{self.voice_url_base}/voice/{silk.name}",

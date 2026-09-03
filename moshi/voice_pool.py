@@ -15,10 +15,13 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[1]
 _CACHE = _ROOT / "data" / "voice_cache"
 
-# ── 话池登记表（key: 句子场景；seed: 用户挑中的种子；file: 锁定后的合成文件；feel: 心情标签）──
+# ── 话池登记表（key: 句子场景；seed: 用户挑中的种子；mp3/silk: 锁定的合成文件；feel: 心情标签）──
+# 定稿（协作方 2026-09-04）：就用 pool_s1_s102（v2 声线·种子 102·speed 0.78·句间[breath]）
 MANIFEST: dict[str, dict] = {
     "check": {"text": "嗯……今天忙完了没有？", "seed": 102,
-              "file": str(_CACHE / "pool_s1_s102.mp3"), "feel": "日常问候"},
+              "mp3": str(_CACHE / "pool_s1_s102.mp3"),
+              "silk": str(_CACHE / "pool_s1_s102_02header.silk"),
+              "feel": "日常问候"},
 }
 
 # 挑句顺序（按"她当下的心情/日子"逐级匹配）
@@ -31,11 +34,12 @@ _RULES = [
 
 
 def pool_file(entry: dict) -> Path | None:
-    """锁定句子的合成文件（存在才可用；未生成的回退 None）。"""
-    if entry.get("file") and Path(entry["file"]).exists():
-        return Path(entry["file"])
-    f = _CACHE / f"pool_{_KEY_OF(entry)}_s{entry.get('seed', '')}.mp3"
-    return f if f.exists() else None
+    """锁定句子的发送文件（优先 QQ 可直接发的 silk；未生成回退 None）。"""
+    for key in ("silk", "mp3"):
+        f = entry.get(key)
+        if f and Path(f).exists():
+            return Path(f)
+    return None
 
 
 def _KEY_OF(entry: dict) -> str:
