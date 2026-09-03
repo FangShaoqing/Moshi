@@ -14,7 +14,8 @@ import time
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
-MODEL_DIR = _ROOT / "tmp_cosy" / "models" / "RealVisXL_V4.0"
+MODEL_DIR = _ROOT / "tmp_cosy" / "models" / "dreamshaper-8"              # SD1.5 写实（4GB 快路线）
+SDXL_DIR = _ROOT / "tmp_cosy" / "models" / "RealVisXL_V4.0"             # SDXL（画质慢路线，备用）
 PHOTO_DIR = _ROOT / "data" / "photo_cache"
 STATIC_DIR = _ROOT / "data" / "static"
 
@@ -30,16 +31,19 @@ def _get_pipe():
     if _pipe is not None:
         return _pipe
     if not available():
-        raise RuntimeError("本地生图模型未就绪（RealVisXL_V4.0）——请先完成下载")
+        raise RuntimeError("本地生图模型未就绪（dreamshaper-8）——请先完成下载")
     import torch
-    from diffusers import StableDiffusionXLPipeline
-    print("[img_gen] 加载 SDXL 模型（首次较慢）…", flush=True)
+    from diffusers import StableDiffusionPipeline
+    print("[img_gen] 加载 SD1.5 写实模型（首次较慢）…", flush=True)
     t0 = time.time()
-    pipe = StableDiffusionXLPipeline.from_pretrained(
-        str(MODEL_DIR), torch_dtype=torch.float16, use_safetensors=True)
+    pipe = StableDiffusionPipeline.from_pretrained(
+        str(MODEL_DIR), torch_dtype=torch.float16, variant="fp16",
+        use_safetensors=True, local_files_only=True,
+        safety_checker=None)      # diffusers 的 NSFW 粗筛对写实人像极易误判（黑图）；关掉（图仅自用）
+    if torch.cuda.is_available():
+        pipe = pipe.to("cuda")            # 4GB：fp16 整卡装得下（~3.4GB）；必须显式搬 GPU
     pipe.enable_attention_slicing()
     pipe.enable_vae_slicing()
-    pipe.enable_model_cpu_offload()
     _pipe = pipe
     print(f"[img_gen] 模型就绪（{time.time() - t0:.0f}s）", flush=True)
     return _pipe
@@ -58,14 +62,14 @@ def img2img(base: Path, prompt: str, negative: str,
     import torch
     from PIL import Image
     init = Image.open(base).convert("RGB")
-    if min(init.size) < 1024:
-        # 放大到 1024 底（图生图输入；本体图通常够大）
-        init = init.resize((1024, 1024), Image.LANCZOS)
+    if min(init.size) < 512:
+        init = init.resize((640, 832), Image.LANCZOS)
     gen = torch.Generator(device="cpu").manual_seed(seed)
     t0 = time.time()
     img = pipe(prompt=prompt, negative_prompt=negative, image=init,
                strength=strength, guidance_scale=guidance,
-               num_inference_steps=steps, generator=gen).images[0]
+               num_inference_steps=steps, generator=gen,
+               width=640, height=832).images[0]      # 竖图（手机照片比例）
     img.save(out)
     print(f"[img_gen] 生成完成 {time.time() - t0:.0f}s → {out.name}", flush=True)
     return out
