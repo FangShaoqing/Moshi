@@ -104,6 +104,22 @@ def _image_data_url(message) -> str | None:
     return None
 
 
+def _audio_url(message) -> str | None:
+    """消息里的第一条语音（silk）→ 公网 URL（QQ 平台给的临时链接）。"""
+    try:
+        for a in (getattr(message, "attachments", None) or []):
+            url = getattr(a, "url", None)
+            if not url:
+                continue
+            ct = (getattr(a, "content_type", "") or "").lower()
+            fn = (getattr(a, "filename", "") or "").lower()
+            if ct.startswith("audio") or fn.endswith((".silk", ".amr", ".mp3", ".wav", ".ogg", ".m4a")):
+                return url
+    except Exception:
+        pass
+    return None
+
+
 class MoshiQQ(botpy.Client):
     """官方 QQBOT：消息 → Session（同一条她）→ 回复（文字或语音——她选）。"""
 
@@ -161,6 +177,14 @@ class MoshiQQ(botpy.Client):
 
     async def _handle(self, message, text: str) -> None:
         image_url = _image_data_url(message)          # ⑤ 她能看照片（vision）
+        # ⑦ 她听你说话：QQ 语音消息 → Paraformer 识别（QQ 平台无 ASR；识别不出则诚实"没听清"）
+        if not text and not image_url:
+            audio = _audio_url(message)
+            if audio:
+                from . import asr as asr_mod
+                text = await asyncio.to_thread(asr_mod.recognize_url, audio) or ""
+                if not text:
+                    text = "[语音消息，她没听清]"     # 降级：诚实
         if not text and not image_url:
             return
         async with self._lock:                        # 一次只处理一句（她的状态是连续的）
