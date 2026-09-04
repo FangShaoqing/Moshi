@@ -96,15 +96,17 @@ def synth(text: str, voice_id: str, model: str | None = None) -> Path:
     out = d.get("output", d)
     audio = None
     if isinstance(out, dict):
-        audio = out.get("audio") or out.get("audio_url") or out.get("url")
-        if isinstance(audio, str) and "base64" not in audio:
-            audio = None
-    if isinstance(audio, dict):
-        audio = audio.get("data") or audio.get("url") or audio.get("base64")
-    # 兼容直接 base64 字符串 / url 字段
+        a = out.get("audio")
+        if isinstance(a, dict):
+            audio = a.get("data") or a.get("url")     # OSS url（实际返回 dict）
+        else:
+            audio = a or out.get("audio_url") or out.get("url")
+    # 兼容直接 base64 字符串
     if isinstance(audio, str) and audio.startswith("http"):
-        with urllib.request.urlopen(audio, timeout=60) as r:
-            return _OUT / f"fetch_{int(time.time())}.mp3" if False else None
+        with urllib.request.urlopen(audio, timeout=120) as r:
+            raw = r.read()
+        b64 = "base64," + __import__("base64").b64encode(raw).decode()
+        audio = b64
     b64 = None
     if isinstance(audio, str) and audio.startswith("base64,"):
         b64 = audio[len("base64,"):]
