@@ -18,12 +18,15 @@ from . import img_gen
 
 # ── 她的形象卡（背影/侧影/局部才需要：长发、白T、素净）──
 HER_SILHOUETTE = ("能看到一个穿白色T恤、及肩黑发的年轻女孩的背影或侧影，素净普通不打扮")
-PHOTO_STYLE = ("candid phone photo, natural light, real life, shot on a phone, "
-               "slightly imperfect, amateur framing, not staged, not advertising")
+PHOTO_STYLE = ("candid phone photo, shot on smartphone, natural light, real life, "
+               "slightly grainy, muted colors, a little blur, imperfect framing, "
+               "not staged, not advertising, not studio")
 NEGATIVE = ("people, woman, girl, human face, selfie, influencer face, doll face, big eyes, "
             "heavy makeup, retouched, airbrushed, AI plastic, anime, cartoon, watermark, "
             "extra fingers, deformed, blurry, text, logo, dress, bow, uniform, "
-            "nude, lingerie, underwear, cleavage, NSFW, sexualized, beach portrait")
+            "nude, lingerie, underwear, cleavage, NSFW, sexualized, beach portrait, "
+            "oversharpened, HDR, studio lighting, plastic skin, fake bokeh, "
+            "saturated colors, ultra realistic CG, render, perfect skin, beauty filter")
 
 # ── 场景池：她日子里的事 → 画面（**她的视角**：她给你看的是她看见的世界——没有人，没有自拍）──
 # 写法关键（实测）：关键词式英文 + 无人物（负面压 people/girl）+ CFG≈7 —— 服从度完美
@@ -173,6 +176,7 @@ def make_photo(person, seed: int | None = None) -> tuple[Path, dict] | None:
             prompt = dec["prompt"] + ", still life"
             out = img_gen.txt2img(prompt, dec["negative"], seed=s)
             if not _has_person(out):
+                out = img_gen.de_ai(out)          # 手机降质（去 AI 味）
                 return out, dec
             print(f"[photo] 有路人侵入，换种子重试（{s}）…")
         except Exception as e:

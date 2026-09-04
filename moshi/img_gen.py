@@ -110,3 +110,24 @@ def base_image() -> Path | None:
         if p.exists():
             return p
     return None
+
+
+def de_ai(png: Path) -> Path:
+    """"手机降质"工序——AI 味的克星：噪点+微糊+暗角+降饱和+压缩（随手拍的真实指纹）。
+
+    这是"看起来像手机拍的"的关键一步（生成模型天然的"太干净/太饱和"就被它吃掉）。
+    """
+    out = png.with_name(png.stem + "_deai.jpg")
+    if out.exists():
+        return out
+    try:
+        import subprocess
+        vf = ("noise=alls=3:allf=t,gblur=sigma=0.25,vignette=PI/6,"
+              "eq=saturation=0.92:contrast=0.95:brightness=0.01")
+        r = subprocess.run(["ffmpeg", "-y", "-i", str(png), "-vf", vf,
+                            "-q:v", "5", str(out)], capture_output=True)
+        if out.exists() and out.stat().st_size > 0:
+            return out
+    except Exception:
+        pass
+    return png
