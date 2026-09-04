@@ -89,34 +89,35 @@ def _post(payload: dict, timeout: int = 120) -> dict:
         return json.loads(r.read().decode("utf-8"))
 
 
-def synth(text: str, voice_id: str, model: str | None = None) -> Path:
-    """设计音色合成 → mp3（multimodal-generation/generation）。"""
-    m = model or VD_MODEL
-    d = _post({"model": m, "input": {"text": text, "voice": voice_id}})
-    out = d.get("output", d)
-    audio = None
-    if isinstance(out, dict):
-        a = out.get("audio")
-        if isinstance(a, dict):
-            audio = a.get("data") or a.get("url")     # OSS url（实际返回 dict）
-        else:
-            audio = a or out.get("audio_url") or out.get("url")
-    # 兼容直接 base64 字符串
+def synth_flash(text: str, voice: str = "Maia", instructions: str = "",
+                language: str = "Chinese") -> Path:
+    """内置音色合成（qwen3-tts-flash；instructions 非空自动升 instruct-flash → 情感指令）。
+
+    Maia =「四月」（知性与温柔的碰撞·女性，百炼内置）。
+    """
+    import base64 as _b64
+    model = "qwen3-tts-instruct-flash" if instructions else "qwen3-tts-flash"
+    payload = {"model": model,
+               "input": {"text": text, "voice": voice, "language_type": language}}
+    if instructions:
+        payload["input"]["instructions"] = instructions
+    d = _post(payload, timeout=180)
+    out = d.get("output", d) or {}
+    a = out.get("audio")
+    if isinstance(a, dict):
+        audio = a.get("data") or a.get("url")
+    else:
+        audio = a or out.get("audio_url") or out.get("url")
     if isinstance(audio, str) and audio.startswith("http"):
         with urllib.request.urlopen(audio, timeout=120) as r:
-            raw = r.read()
-        b64 = "base64," + __import__("base64").b64encode(raw).decode()
-        audio = b64
-    b64 = None
+            audio = "base64," + _b64.b64encode(r.read()).decode()
     if isinstance(audio, str) and audio.startswith("base64,"):
-        b64 = audio[len("base64,"):]
-    elif isinstance(audio, str):
-        b64 = audio
-    if not b64:
+        audio = audio[7:]
+    if not audio:
         raise RuntimeError(f"合成无音频: {json.dumps(d, ensure_ascii=False)[:200]}")
     _OUT.mkdir(parents=True, exist_ok=True)
-    p = _OUT / f"qwenvd_{voice_id[:12]}_{int(time.time())}.mp3"
-    p.write_bytes(base64.b64decode(b64))
+    p = _OUT / f"qwen_{voice}_{int(time.time())}.mp3"
+    p.write_bytes(_b64.b64decode(audio))
     return p
 
 
