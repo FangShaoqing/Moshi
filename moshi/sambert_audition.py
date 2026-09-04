@@ -43,14 +43,15 @@ def synth(voice: str, text: str = SAMPLE) -> Path:
     dashscope.api_key = key()
     r = dashscope.SpeechSynthesizer.call(model=f"sambert-{voice}-v1", text=text,
                                          format="mp3", sample_rate=48000)
-    if r.get("status_code") != 200:
-        raise RuntimeError(f"{voice}: {r.get('status_code')} {str(r.get('message'))[:120]}")
-    audio = r.get("output", {}).get("audio")
-    if not hasattr(audio, "write"):
+    resp = r.get_response() or {}
+    if resp.get("status_code") != 200:
+        raise RuntimeError(f"{voice}: {resp.get('status_code')} {str(resp.get('message'))[:120]}")
+    data = r.get_audio_data()
+    if not data:
         raise RuntimeError(f"{voice}: 返回无音频")
     _OUT.mkdir(parents=True, exist_ok=True)
     out = _OUT / f"sambert_{voice}.mp3"
-    audio.write(out)
+    out.write_bytes(data)
     return out
 
 
