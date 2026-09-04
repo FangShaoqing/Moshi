@@ -193,27 +193,65 @@ class MoshiQQ(botpy.Client):
         await asyncio.sleep(random.uniform(0.8, 3.0))  # 真人打字节奏（消息不是秒回的）
         # ── 明确要语音 → 她直接发语音（系统发；不走"她选"，也绝不让文字冒充语音）──
         if self.voice and any(w in text for w in _VOICE_REQUEST_WORDS):
-            try:
-                await self._send_voice(message, reply[:60])
-                return
-            except Exception as e:
-                print(f"[qqbot] 语音发送失败：{e}")
+            openid = getattr(message.author, "user_openid", None) or self.last_openid
+            ok = await self._send_runtime_voice(reply[:60], openid,
+                                                getattr(message, "group_openid", ""))
+            if not ok:
                 try:
                     await message.reply(content="……语音我这边发不出去，先这样吧。")
                 except Exception:
                     pass
-                return
+            return
         # ── 她选：这轮发文字还是发语音（像真人；语音=仅有语音，不带文字）──
         if self.voice and voice_mod.decide_voice(self.session.she, "chat", reply):
-            try:
-                await self._send_voice(message, reply)
+            openid = getattr(message.author, "user_openid", None) or self.last_openid
+            ok = await self._send_runtime_voice(reply, openid,
+                                                getattr(message, "group_openid", ""))
+            if ok:
                 return
-            except Exception as e:
-                print(f"[qqbot] 语音发送失败，降级文字：{e}")
+            print("[qqbot] 语音失败，降级文字")
         try:
             await message.reply(content=reply)
         except Exception as e:
             print(f"[qqbot] 回复失败：{e}")
+
+    async def _send_runtime_voice(self, text: str, openid: str, group_openid: str = "") -> bool:
+        """她说这句话（即时合成 qwen3-tts-flash + Maia → silk → 发；2-5 秒=真人发语音的延迟）。
+
+        即时合成优先（她的话随日子变，内容比话池真）；
+        失败 → 话池保底（若有锁定句）→ 再失败 False（上层降级文字）。
+        """
+        if not self.voice or not openid:
+            return False
+        try:
+            from . import qwen_tts
+            mp3 = await asyncio.to_thread(qwen_tts.synth_flash, text.strip()[:120], "Maia")
+        except Exception as e:
+            print(f"[qqbot] qwen 合成失败：{str(e)[:100]}，走话池保底")
+            mp3 = None
+        if mp3 is None:
+            try:
+                pool = voice_pool.pick_pool_voice(self.session.she)
+                if pool:
+                    mp3 = pool[0]
+            except Exception:
+                pass
+        if mp3 is None:
+            return False
+        try:
+            silk = await asyncio.to_thread(voice_mod.mp3_to_silk_variant, mp3, "02header")
+            url = f"{self.voice_url_base}/voice/{silk.name}"
+            if group_openid:
+                await self.api.post_group_file(group_openid=group_openid, file_type=3,
+                                               url=url, srv_send_msg=True)
+            else:
+                await self.api.post_c2c_file(openid=openid, file_type=3,
+                                             url=url, srv_send_msg=True)
+            print(f"[qqbot] 她发语音了（Maia）：{text[:30]}…")
+            return True
+        except Exception as e:
+            print(f"[qqbot] 语音发送失败：{str(e)[:90]}")
+            return False
 
     async def _send_voice(self, message, text: str) -> None:
         """发语音（file_type=3）。QQ 对 silk 头判定严格：按 SILK_STYLE_ORDER 依次尝试变体。"""
@@ -251,49 +289,15 @@ class MoshiQQ(botpy.Client):
                 sent = await self._try_photo_push()
                 if sent:
                     continue
-                # 主动语音优先"话池"（她主动只会说那几句——锁定的 v2 声线，零等待）
-                try:
-                    pool = voice_pool.pick_pool_voice(self.session.she)
-                except Exception:
-                    pool = None
-                if pool and self.voice:
-                    try:
-                        path, pool_text = pool
-                        if path.suffix == ".silk":     # 已锁定可直接发（话池零转换）
-                            silk = path
-                        else:
-                            silk = await asyncio.to_thread(
-                                voice_mod.mp3_to_silk_variant, path, "02header")
-                        await self.api.post_c2c_file(
-                            openid=self.last_openid, file_type=3,
-                            url=f"{self.voice_url_base}/voice/{silk.name}",
-                            srv_send_msg=True)
-                        print(f"[qqbot] 她想你了（话池·锁定声线）：{pool_text[:24]}…")
-                        continue
-                    except Exception as e:
-                        print(f"[qqbot] 话池语音失败，回退合成：{e}")
                 text = await asyncio.to_thread(self.session.tick)
                 if text:
                     if self.voice and voice_mod.decide_voice(self.session.she, "chat",
                                                              text, turn_kind="touch"):
-                        last_err = None
-                        for style in voice_mod.SILK_STYLE_ORDER:
-                            try:
-                                silk = await asyncio.to_thread(voice_mod.ensure_silk, text,
-                                                               self.voice_design, style=style)
-                                await self.api.post_c2c_file(
-                                    openid=self.last_openid, file_type=3,
-                                    url=f"{self.voice_url_base}/voice/{silk.name}",
-                                    srv_send_msg=True)
-                                print(f"[qqbot] 她想你了（语音 {style}）：{text[:30]}…")
-                                break
-                            except Exception as e:
-                                last_err = e
-                                if "850019" in str(e) or "格式不支持" in str(e):
-                                    continue
-                                raise
-                        else:
-                            raise last_err or RuntimeError("tick 语音发送失败")
+                        # 她主动说话 → 即时合成（Maia 新声线；2-5 秒=真实延迟）→ 话池保底 → 再文字
+                        ok = await self._send_runtime_voice(text, self.last_openid or "")
+                        if ok:
+                            print(f"[qqbot] 她想你了（语音）：{text[:30]}…")
+                            continue
                     else:
                         await self.api.post_c2c_message(
                             openid=self.last_openid, msg_type=0, content=text)
