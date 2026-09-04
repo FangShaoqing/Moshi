@@ -30,3 +30,6 @@ tmp_req*.txt
 # 鈹€鈹€ 绌块€忓伐鍏凤紙涓嬭浇鍗崇敤锛屼笉鍏ュ簱锛泂ilk_encoder.exe 鏄」鐩祫浜э紝淇濈暀锛夆攢鈹€
 tools/cloudflared.exe
 
+
+tmp_airllm_*.md
+
